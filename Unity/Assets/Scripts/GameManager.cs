@@ -15,12 +15,18 @@ public class GameManager : MonoBehaviour
     int deaths;
     GUIStyle style;
 
-    static readonly (float x, string t)[] Hints =
+    public Vector3[] zoneStart; // старт зоны N = zoneStart[N-1]; F1..F6 в Editor/Development build
+    public Vector3 Checkpoint => cp;
+
+    // (x, y, текст): виден, пока игрок ближе 7 м по x и 6 м по y. Координаты сетки OgonokBuilder.
+    static readonly (float x, float y, string t)[] Hints =
     {
-        (3, "Стрелки / A D — идти, Пробел — прыжок"), (19, "Shift — вспышка (−15% пламени)"),
-        (29, "Капли и лужи гасят пламя"), (51, "Большое пламя плавит лёд"),
-        (58, "Зажми ↓ — стань фитильком"), (70, "Сквозняк тушит. Прячься за камни"),
-        (92, "Держи прыжок в тёплом потоке"), (113, "Верёвки горят. Одна из них — не простая"),
+        (3.5f, 17.6f, "Стрелки / A D — идти, Пробел — прыжок"), (19, 17.6f, "Shift — вспышка (−15% пламени)"),
+        (40, 17.6f, "Окно дует порывами. Занавеска вздувается заранее — прячься за мебель"),
+        (84, 17.6f, "Капли и лужи гасят пламя. Большое пламя плавит лёд"),
+        (112, 21.6f, "Держи прыжок у верёвки: сгорит, и шкаф ляжет мостом"),
+        (124 + 82, 1.6f, "Впереди котёл: подойди и держи E, чтобы отдать часть пламени"),
+        (124 + 106, 1.6f, "Зажми ↓ — стань фитильком"),
     };
 
     void Awake()
@@ -38,6 +44,15 @@ public class GameManager : MonoBehaviour
 
     public void SetCheckpoint(Vector3 p) => cp = p;
 
+    // Отладка (F1..F6) и тесты: старт зоны n (1..6), если она уже собрана.
+    public bool JumpToZone(int n)
+    {
+        if (zoneStart == null || n < 1 || n > zoneStart.Length) return false;
+        if (state == State.Title) state = State.Play;
+        cp = zoneStart[n - 1]; player.Respawn(cp); player.flame.Revive(0.8f);
+        return true;
+    }
+
     public void Win()
     {
         if (!Playing) return;
@@ -51,6 +66,10 @@ public class GameManager : MonoBehaviour
         if (state == State.Title && (k.spaceKey.wasPressedThisFrame || k.enterKey.wasPressedThisFrame)) state = State.Play;
         else if (k.rKey.wasPressedThisFrame || (state == State.Win && k.enterKey.wasPressedThisFrame))
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        var fk = new[] { k.f1Key, k.f2Key, k.f3Key, k.f4Key, k.f5Key, k.f6Key };
+        for (int i = 0; i < fk.Length; i++) if (fk[i].wasPressedThisFrame) JumpToZone(i + 1);
+#endif
         if (state == State.Play) playT += Time.deltaTime;
         if (state == State.Win) winT += Time.deltaTime;
         if (state == State.Play && player.flame.Dead)
@@ -71,21 +90,21 @@ public class GameManager : MonoBehaviour
             GUI.color = new Color(0, 0, 0, .6f); GUI.DrawTexture(full, Texture2D.whiteTexture); GUI.color = Color.white;
             style.fontSize = Screen.height / 8; GUI.Label(new Rect(0, Screen.height * .25f, Screen.width, Screen.height * .2f), "Огонёк", style);
             style.fontSize = Screen.height / 28;
-            GUI.Label(new Rect(0, Screen.height * .5f, Screen.width, 40), "Последняя спичка. Холодный дом. Доберись до камина.", style);
+            GUI.Label(new Rect(0, Screen.height * .5f, Screen.width, 40), "Самая длинная ночь. Холодный дом. Дойди до большого костра.", style);
             if (Mathf.Sin(Time.time * 3) > -.3f) GUI.Label(new Rect(0, Screen.height * .62f, Screen.width, 40), "Нажми Пробел", style);
             return;
         }
         if (state == State.Win)
         {
-            style.fontSize = Screen.height / 9; GUI.Label(new Rect(0, Screen.height * .25f, Screen.width, 100), "Ты дома", style);
+            style.fontSize = Screen.height / 9; GUI.Label(new Rect(0, Screen.height * .25f, Screen.width, 100), "Продолжение следует", style);
             style.fontSize = Screen.height / 26;
             GUI.Label(new Rect(0, Screen.height * .42f, Screen.width, 40), $"Время {playT:0.0} с · погасал {deaths} раз(а) · Enter — заново", style);
             return;
         }
         if (player.flame.Dead) { GUI.Label(new Rect(0, Screen.height * .4f, Screen.width, 60), "Погас…", style); return; }
         if (playT < 9) { style.fontSize = Screen.height / 34; GUI.Label(new Rect(0, 20, Screen.width, 40), "Пламя — это и жизнь, и свет. Грейся у свечей.", style); }
-        var x = player.transform.position.x;
-        foreach (var (hx, t) in Hints)
-            if (Mathf.Abs(hx - x) < 7) { style.fontSize = Screen.height / 34; GUI.Label(new Rect(0, Screen.height * .88f, Screen.width, 40), t, style); break; }
+        var pp = player.transform.position;
+        foreach (var (hx, hy, t) in Hints)
+            if (Mathf.Abs(hx - pp.x) < 7 && Mathf.Abs(hy - pp.y) < 6) { style.fontSize = Screen.height / 34; GUI.Label(new Rect(0, Screen.height * .88f, Screen.width, 40), t, style); break; }
     }
 }

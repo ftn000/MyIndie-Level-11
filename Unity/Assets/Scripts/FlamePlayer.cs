@@ -8,6 +8,7 @@ public class FlamePlayer : MonoBehaviour
     public int face = 1;
     public float windX;
     public bool inUpdraft;
+    public bool giveHeld; // E: «отдать пламя» (GiveFlame)
     public bool Dashing => dashT > 0;
     public bool Grounded => grounded;
     [System.NonSerialized] public bool manual; // тесты гоняют MoveInput сами
@@ -33,6 +34,7 @@ public class FlamePlayer : MonoBehaviour
         bool down = k.downArrowKey.isPressed || k.sKey.isPressed;
         int dir = (right ? 1 : 0) - (left ? 1 : 0);
         if (dir != 0) face = dir;
+        giveHeld = k.eKey.isPressed;
 
         MoveInput(dt, dir, held, jumpP, dashP, down);
     }

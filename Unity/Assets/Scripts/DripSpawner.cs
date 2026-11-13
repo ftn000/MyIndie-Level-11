@@ -7,6 +7,8 @@ public class DripSpawner : MonoBehaviour
     public float phase;
     float ph;
 
+    public float TimeToDrop => 2.2f - ph;
+
     void Start() => ph = phase;
 
     void Update()

@@ -5,7 +5,8 @@ using UnityEngine;
 public class Rope : Interactable
 {
     public bool trigger;
-    public static event Action Burned;
+    public string id; // trigger-верёвка шлёт Burned(id): мост и люк слушают свой id
+    public static event Action<string> Burned;
     bool burning, spread;
     float t;
 
@@ -24,7 +25,7 @@ public class Rope : Interactable
             foreach (var o in All)
                 if (o is Rope r && !r.burning && (r.transform.position - transform.position).sqrMagnitude < 1.2f) r.Ignite();
         }
-        if (t > 0.6f) { if (trigger) Burned?.Invoke(); Destroy(gameObject); }
+        if (t > 0.6f) { if (trigger) Burned?.Invoke(id); Destroy(gameObject); }
     }
 
     void Ignite()
