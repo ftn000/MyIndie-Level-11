@@ -27,3 +27,13 @@
 ## Автор
 
 Егор Кузнецов
+
+## Unity-версия (основная)
+
+Проект в `Unity/`, Unity 6000.3.11f1 (URP 3D, 2.5D). Открыть через Unity Hub: Add → папка `Unity`, затем сцена `Assets/Scenes/Level1.unity`.
+Веб-прототип (`index.html`) остаётся как референс механик.
+
+- Пересобрать сцену из данных уровня: меню **Ogonok → Build Level 1** (перезапишет `Level1.unity`, не правьте её руками, пока не договорились кто ведёт сцену).
+- Сборка WebGL: **Ogonok → Build WebGL** (`Unity/Builds/WebGL`).
+- Тесты уровня: Window → General → Test Runner → PlayMode.
+- Арт: заменить `Assets/Art/FlamePlaceholder.png` рисованным спрайтом огонька (PNG с прозрачностью, pivot по центру, пламя тянется вверх).
