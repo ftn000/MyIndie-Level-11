@@ -1360,6 +1360,15 @@ public class LevelTests
         Assert.Less(maxY - y0, 0.1f, "плот прижал к стене, а Игни не взлетел по ней");
         Assert.IsFalse(p.flame.Dead);
     }
+    // Unity десериализует отсутствующее поле как пустой массив: сцена, собранная до P-7, не должна гасить огонёк.
+    [UnityTest] public IEnumerator EmptyMapRectsMeansNoMapGuard()
+    {
+        gm.mapRects = new Rect[0];
+        yield return Run(60, Idle);
+        yield return Frames(60);
+        Assert.IsFalse(p.flame.Dead, "пустой mapRects = карта не задана, страховка молчит");
+    }
+
 
     [UnityTest] public IEnumerator FlameOutsideAllZonesGoesOutAndRespawnsAtCheckpoint()
     {
@@ -1397,6 +1406,7 @@ public class LevelTests
 
     [UnityTest] public IEnumerator CellarShaftIsAboveAnyJump()
     {
+        foreach (var t in All<Pit>()) t.enabled = false; // тест про шахту люка: бот не должен гаснуть в провалах подвала, пока полки падают
         var hatch = All<Hatch>().Single(); BurnLatch(hatch);
         gm.JumpToZone(2); yield return null;
         float floorY = gm.zoneStart[1].y, hx = hatch.transform.GetChild(0).position.x + 0.5f; // шахта люка: 2 клетки
@@ -1420,5 +1430,59 @@ public class LevelTests
         gm.Respawn();
         yield return null;
         Assert.IsTrue(ice == null, "преграда не возвращается ни со временем, ни после респауна");
+    }
+
+    // ---------- P-9: падающий мост давит ----------
+
+    // Поджигает верёвку моста id и возвращает габариты его плиты (плиты ещё скрыты: позиция и масштаб).
+    Bounds IgniteBridge(string id)
+    {
+        foreach (var t in All<Pit>()) t.enabled = false; // смерть должна быть только от моста, не от провала под ним
+        var r = RopeId(id).transform.position;
+        Tp(r.x, r.y + 1f, 1f);
+        p.MoveInput(Dt, 0, false, false, false, 0); // кадр: верёвка загорелась, дальше горит сама
+        var c = All<Bridge>().First(b => b.id == id).transform.GetChild(0);
+        return new Bounds(c.position, c.localScale);
+    }
+
+    [UnityTest] public IEnumerator BridgeCrushesPlayerUnderIt()
+    {
+        var b = IgniteBridge("wardrobe");
+        Tp(b.center.x, b.center.y, 1f);
+        yield return Run(180, Idle, () => { Tp(b.center.x, b.center.y, 1f); return p.flame.Dead; }); // держим игрока на месте: моста ещё нет, иначе упадёт в провал
+        Assert.IsTrue(p.flame.Dead, "придавило: погас");
+        Assert.IsTrue(All<Bridge>().First(x => x.id == "wardrobe").Landed, "мост успел упасть");
+Assert.IsNotNull(GameObject.Find("Plank"), "мост остаётся лежать");
+        gm.Respawn(); yield return null;
+        Assert.IsFalse(p.flame.Dead);
+        Assert.IsFalse(new Bounds(p.transform.position, Vector3.one * p.H * 1.9f).Intersects(new Bounds(b.center, b.size + Vector3.forward * 4)), "после респауна не внутри моста");
+    }
+
+    [UnityTest] public IEnumerator BridgeDoesNotHarmPlayerBesideIt()
+    {
+        var b = IgniteBridge("wardrobe");
+        Tp(b.min.x - 3f, b.max.y + 2f, 1f); // в стороне, у провала
+        yield return Run(120, Idle);
+        Assert.IsFalse(p.flame.Dead, "в стороне не гаснет");
+        Assert.IsNotNull(GameObject.Find("Plank"));
+    }
+
+    // Фикстура в открытом воздухе за уровнем (в доме мост упирается в стену, выбежать некуда): плита 3 м, верёвка над ней.
+    [UnityTest] public IEnumerator PlayerOutrunsFallingBridge()
+    {
+        const float X = 500f, Y = 10f;
+        gm.mapRects = null; // фикстура вне карты: страховка не должна её гасить
+        var br = new GameObject("Bridge"); br.AddComponent<Bridge>().id = "fx";
+        var pl = GameObject.CreatePrimitive(PrimitiveType.Cube); pl.transform.SetParent(br.transform, false);
+        pl.transform.position = new Vector3(X, Y, 0); pl.transform.localScale = new Vector3(3, 1, 4);
+        var rp = GameObject.CreatePrimitive(PrimitiveType.Cube).AddComponent<Rope>(); rp.trigger = true; rp.id = "fx";
+        rp.transform.position = new Vector3(X, Y + 2, 0); rp.transform.localScale = new Vector3(0.2f, 1, 0.2f);
+        yield return null; // Bridge.Start прячет плиту
+        Tp(X, Y + 2, 1f);
+        p.MoveInput(Dt, 0, false, false, false, 0); // верёвка загорелась
+        Tp(X + 1.1f, Y, 1f); // у правого края плиты, под ней
+        yield return Run(120, Right, () => { var q = p.transform.position; q.y = Y; p.transform.position = q; Physics.SyncTransforms(); return false; });
+        Assert.IsTrue(br.GetComponent<Bridge>().Landed, "мост упал");
+        Assert.IsFalse(p.flame.Dead, "успел выйти из-под моста");
     }
 }
