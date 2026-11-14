@@ -103,3 +103,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f1580bf61ed2c104abcfa504ea8f79be, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Ogonok::Drop
+  cost: 0.18
+  gravity: 25
+  maxSpeed: 99

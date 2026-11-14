@@ -4,7 +4,7 @@ using UnityEngine.SceneManagement;
 
 public class GameManager : MonoBehaviour
 {
-    public enum State { Title, Play, Win }
+    public enum State { Title, Play, Finale, Win }
     public static GameManager I;
     public FlamePlayer player;
     public State state;
@@ -13,7 +13,10 @@ public class GameManager : MonoBehaviour
     Vector3 cp;
     float deadT, playT, winT;
     int deaths;
+    string winTitle = "Продолжение следует";
     GUIStyle style;
+    public float fade; // чёрная пелена финала, 0..1
+    public int Deaths => deaths;
 
     public Vector3[] zoneStart; // старт зоны N = zoneStart[N-1]; F1..F6 в Editor/Development build
     public Vector3 Checkpoint => cp;
@@ -21,12 +24,21 @@ public class GameManager : MonoBehaviour
     // (x, y, текст): виден, пока игрок ближе 7 м по x и 6 м по y. Координаты сетки OgonokBuilder.
     static readonly (float x, float y, string t)[] Hints =
     {
-        (3.5f, 17.6f, "Стрелки / A D — идти, Пробел — прыжок"), (19, 17.6f, "Shift — вспышка (−15% пламени)"),
-        (40, 17.6f, "Окно дует порывами. Занавеска вздувается заранее — прячься за мебель"),
-        (84, 17.6f, "Капли и лужи гасят пламя. Большое пламя плавит лёд"),
-        (112, 21.6f, "Держи прыжок у верёвки: сгорит, и шкаф ляжет мостом"),
-        (124 + 82, 1.6f, "Впереди котёл: подойди и держи E, чтобы отдать часть пламени"),
-        (124 + 106, 1.6f, "Зажми ↓ — стань фитильком"),
+        // H = 94: мировой y = H - 1 - строка + 0.5, поэтому зоны 1–2 это +64 к прежним значениям
+        (3.5f, 81.6f, "Стрелки / A D — идти, Пробел — прыжок"), (19, 81.6f, "Shift — вспышка (−15% пламени)"),
+        (40, 81.6f, "Окно дует порывами. Занавеска вздувается заранее — прячься за мебель"),
+        (84, 81.6f, "Капли и лужи гасят пламя. Большое пламя плавит лёд"),
+        (112, 85.6f, "Держи прыжок у верёвки: сгорит, и шкаф ляжет мостом"),
+        (124 + 82, 65.6f, "Впереди котёл: подойди и держи E, чтобы отдать часть пламени"),
+        (124 + 106, 65.6f, "Зажми ↓ — стань фитильком"),
+        // зона 5 (лес)
+        (6, 3.6f, "Холодно: в лесу пламя тает быстрее. Снег — это мелкие капли, под кронами его нет"),
+        (44, 3.6f, "Ветер дует навстречу. Прячься за пнями и пережидай порыв"),
+        (62, 3.6f, "Большое пламя плавит лёд. На льду стань маленьким: зажми ↓"),
+        (116, 3.6f, "Подпали верёвку: ствол ляжет мостом"),
+        (166, 7f, "Подъём без подпитки. Береги пламя: ↓ расходует меньше"),
+        // зона 6
+        (221, 13.6f, "Ветер стих. Подойди к костру и держи E: отдай себя целиком"),
     };
 
     void Awake()
@@ -59,6 +71,10 @@ public class GameManager : MonoBehaviour
         state = State.Win; winT = 0;
         Fx.Spark(player.transform.position, 60, 6);
     }
+
+    // Финал у костра: управление и таймер стоят, Bonfire ведёт экран.
+    public void StartFinale() { if (Playing) state = State.Finale; }
+    public void FinishFinale() { state = State.Win; winT = 0; winTitle = "Не дай погаснуть"; }
 
     void Update()
     {
@@ -94,9 +110,11 @@ public class GameManager : MonoBehaviour
             if (Mathf.Sin(Time.time * 3) > -.3f) GUI.Label(new Rect(0, Screen.height * .62f, Screen.width, 40), "Нажми Пробел", style);
             return;
         }
+        if (fade > 0) { GUI.color = new Color(0, 0, 0, fade); GUI.DrawTexture(full, Texture2D.whiteTexture); GUI.color = Color.white; }
+        if (state == State.Finale) return;
         if (state == State.Win)
         {
-            style.fontSize = Screen.height / 9; GUI.Label(new Rect(0, Screen.height * .25f, Screen.width, 100), "Продолжение следует", style);
+            style.fontSize = Screen.height / 9; GUI.Label(new Rect(0, Screen.height * .25f, Screen.width, 100), winTitle, style);
             style.fontSize = Screen.height / 26;
             GUI.Label(new Rect(0, Screen.height * .42f, Screen.width, 40), $"Время {playT:0.0} с · погасал {deaths} раз(а) · Enter — заново", style);
             return;

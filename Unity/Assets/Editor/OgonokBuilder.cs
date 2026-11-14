@@ -12,12 +12,14 @@ using UnityEngine.Rendering.Universal;
 // Символы: # камень, m мебель/ящик, I лёд, H лёд только от котла, R занавеска, T верёвка-мост (id wardrobe), L верёвка щеколды (id hatch),
 // b плита моста, h плита люка, P провал (смерть), w паутина (вертикальная колонна = одна паутина), v решётка, p бумага, ~ лужа,
 // d капля, e капля, которую гасит котёл, c свеча, k керосинка, G временная цель.
+// Зоны 5–6 (P-3): n пень/бревно (коллайдер, укрытие от ветра), o крона (коллайдер, под ней снега нет), r смола (чекпоинт).
 public static class OgonokBuilder
 {
-    const int W = 252, H = 30;
+    const int W = 252, H = 94;
     const float Depth = 4f;
     static char[,] g;
     static Material mStone, mWall, mIce, mRope, mWax, mPaper, mWater, mGrate, mWood, mFire, mSparkAdd, mSteam, mDrop, mFurn, mWindow, mCurtain, mWeb, mLamp, mPipe;
+    static Material mTrunk, mCrown, mSnowCap, mResin, mRune, mFar;
     static Sprite flameSprite, dotSprite;
     static GameObject dropPrefab;
     static readonly System.Collections.Generic.List<(string name, int x0, int y0, int x1, int y1, string hex)> rooms = new();
@@ -65,6 +67,9 @@ public static class OgonokBuilder
         rooms.Clear(); extras.Clear(); heatIce.Clear(); boilerDrips.Clear(); zoneStarts.Clear(); dripN = 0;
         Zone1House(0, 0);
         Zone2Basement(124, 14);
+        zoneStarts.Add(zoneStarts[1]); zoneStarts.Add(zoneStarts[1]); // заглушки зон 3–4: зона 5 должна быть пятой. P-2 заменит их Zone3Sewer/Zone4Shaft
+        Zone5Forest(0, 74);
+        Zone6Bonfire(200, 74);
     }
 
     // Зона 1. Дом: пол этажа = строка 13, потолок 0, верх пола y = 17. Спальня «наверху»: её пол = строка 9 (y = 21).
@@ -148,6 +153,141 @@ public static class OgonokBuilder
         B(111, 6, 125, 11, '.'); S(118, 14, 'G');
     }
 
+    // Зона 5. Лес: x 0..199, строки 74..93 (локально 0..19). Потолок строка 0, основание 19. Земля = плиты от строки r до 19, игрок стоит в строке r-1.
+    // Опушка 1..65 (пни = укрытия от ветра fan x=52, кроны без снега), ручей 66..80 (лёд над водой), бурелом 81..151 (брёвна, овраг 120..127 с мостом-стволом на верёвке),
+    // подъём 152..199 (террасы по 1 м через 4 м, без подпитки). Холод ×1.5 на всю зону, снег по всей длине.
+    // Смола-чекпоинты: x 30, 58, 86, 112, 130, 154 (между ними ≤ 28 м; от 154 до костра 72 м без подпитки).
+    static void Zone5Forest(int x0, int y0)
+    {
+        void B(int a, int b, int c, int d, char ch) => Box(x0 + a, y0 + b, x0 + c, y0 + d, ch);
+        void S(int a, int b, char ch) => g[y0 + b, x0 + a] = ch;
+        void Ground(int a, int c, int r)
+        {
+            B(a, r, c, 19, '#');
+            extras.Add(l => Cube("Snow", l, new Vector3(x0 + (a + c + 1) / 2f, H - (y0 + r) + 0.04f, 0), new Vector3(c - a + 1, 0.08f, Depth), mSnowCap, false));
+        }
+        // дерево: пень-укрытие (1 м) в строке над землёй, крона-коллайдер выше, ствол декором за плоскостью игры
+        void Tree(int x, int gr, int cb)
+        {
+            B(x, gr - 1, x, gr - 1, 'n'); B(x - 2, cb, x + 2, cb + 1, 'o');
+            float h = gr - cb - 2;
+            extras.Add(l => Cube("TreeTrunk", l, new Vector3(x0 + x + 0.5f, H - (y0 + gr) + h / 2, 1.3f), new Vector3(0.9f, h, 0.9f), mTrunk, false));
+        }
+        B(0, 0, 199, 0, '#'); B(0, 19, 199, 19, '#'); B(0, 0, 0, 19, '#');
+        rooms.Add(("Лес", x0 + 1, y0 + 1, x0 + 198, y0 + 18, "#10201c"));
+        zoneStarts.Add(C(x0 + 3, y0 + 16) + Vector3.up * 0.1f);
+
+        // 1. Опушка
+        Ground(1, 65, 17);
+        foreach (var x in new[] { 12, 19, 26, 33, 41, 47 }) Tree(x, 17, 8);
+        S(16, 16, 'p'); S(24, 16, 'p'); S(38, 16, 'p');
+        S(30, 16, 'r'); S(58, 16, 'r');
+        extras.Add(l => BuildGale(l, x0 + 52.5f, H - (y0 + 17) + 4.5f, 0.1f, 45f));
+
+        // 2. Ручей: лёд (тает от size >= 0.5) над водой-Pit, два просвета для прыжка
+        Ground(81, 151, 17);
+        B(66, 17, 80, 17, 'I'); B(66, 18, 80, 18, 'P'); B(71, 17, 72, 17, '.'); B(76, 17, 76, 17, '.');
+        S(86, 16, 'r');
+
+        // 3. Бурелом: брёвна (1 м), кроны; овраг 120..127: верёвка 118 роняет ствол-мост (id log)
+        foreach (var (a, b) in new[] { (90, 91), (94, 96), (104, 105), (109, 110), (133, 135), (139, 140), (145, 146) }) B(a, 16, b, 16, 'n');
+        foreach (var x in new[] { 100, 108, 137, 143 }) Tree(x, 17, 8);
+        S(102, 16, 'p'); S(106, 16, 'p'); S(141, 16, 'p');
+        S(112, 16, 'r'); S(130, 16, 'r');
+        B(115, 8, 121, 9, 'o');
+        B(120, 17, 127, 18, '.'); B(120, 18, 127, 18, 'P');
+        extras.Add(l =>
+        {
+            for (int r = 10; r <= 14; r++) { var rp = Cube("Rope", l, C(x0 + 118, y0 + r), new Vector3(0.2f, 1, 0.2f), mRope, false).AddComponent<Rope>(); rp.trigger = true; rp.id = "log"; }
+            var br = new GameObject("LogBridge"); br.transform.SetParent(l, false); br.AddComponent<Bridge>().id = "log";
+            Cube("LogPlank", br.transform, new Vector3(x0 + 124f, H - (y0 + 17) - 0.5f, 0), new Vector3(8, 1, Depth), mTrunk);
+        });
+
+        // 4. Подъём: 11 террас, ни свечи, ни бумаги. Ветер только на верхней площадке
+        for (int k = 0; k <= 10; k++) Ground(152 + 4 * k, 155 + 4 * k, 17 - k);
+        Ground(196, 199, 7);
+        S(154, 16, 'r');
+        foreach (var k in new[] { 1, 3, 5 }) Tree(154 + 4 * k, 17 - k, 3);
+        foreach (var k in new[] { 7, 9 }) B(154 + 4 * k, 17 - k - 1, 154 + 4 * k, 17 - k - 1, 'n');
+        extras.Add(l => BuildGale(l, x0 + 198.5f, H - (y0 + 7) + 4.5f, 0.1f, 40f));
+
+        // снег по всей зоне (цена 0.03, под кронами нет), холод, общий план в начале, далёкий круг камней
+        extras.Add(l =>
+        {
+            for (int x = 6; x <= 198; x += 8)
+            {
+                var sn = new GameObject("Snowfall"); sn.transform.SetParent(l, false); sn.transform.position = C(x0 + x, y0 + 1);
+                var sp = sn.AddComponent<DripSpawner>(); sp.dropPrefab = dropPrefab; sp.phase = x % 5 * 0.07f;
+                sp.interval = 0.5f; sp.cost = 0.03f; sp.halfWidth = 4f; sp.gravity = 3f; sp.maxSpeed = 2.2f; sp.scale = 0.5f; sp.activeRange = 30f;
+            }
+            var cz = new GameObject("ColdZone"); cz.transform.SetParent(l, false);
+            cz.transform.position = new Vector3(x0 + 100f, H - (y0 + 10), 0); cz.transform.localScale = new Vector3(200, 20, 6); cz.AddComponent<ColdZone>().mult = 1.5f;
+            var gt = H - (y0 + 17);
+            var zi = new GameObject("ZoneIntro5"); zi.transform.SetParent(l, false);
+            zi.transform.position = new Vector3(x0 + 9f, gt + 4f, 0); zi.transform.localScale = new Vector3(14, 10, 6);
+            var intro = zi.AddComponent<ZoneIntro>(); intro.focus = new Vector3(x0 + 26f, gt + 6f, 0); intro.seconds = 2f;
+            for (int i = 0; i < 10; i++) // круг камней на далёком холме: виден только в общем плане
+            {
+                float a = i / 10f * Mathf.PI * 2;
+                var st = Cube("FarStone", l, new Vector3(x0 + 42 + 6 * Mathf.Cos(a), gt + 11 + 0.7f * Mathf.Sin(a), 45), new Vector3(0.9f, 2f, 0.9f), mFar, false);
+            }
+            var glow = Sprite("FarGlow", l, flameSprite, mSparkAdd, 10f); glow.transform.position = new Vector3(x0 + 42, gt + 11.5f, 44);
+        });
+    }
+
+    // Зона 6. Костёр: x 200..251, строки 74..93. Поляна на высоте строки 7 (продолжение подъёма), ветра нет, в центре холодный костёр x 226.
+    static void Zone6Bonfire(int x0, int y0)
+    {
+        void B(int a, int b, int c, int d, char ch) => Box(x0 + a, y0 + b, x0 + c, y0 + d, ch);
+        B(0, 0, 51, 0, '#'); B(0, 19, 51, 19, '#'); B(51, 0, 51, 19, '#'); B(0, 7, 51, 19, '#');
+        extras.Add(l => Cube("Snow", l, new Vector3(x0 + 26f, H - (y0 + 7) + 0.04f, 0), new Vector3(52, 0.08f, Depth), mSnowCap, false));
+        rooms.Add(("Поляна", x0, y0 + 1, x0 + 50, y0 + 6, "#17202e"));
+        zoneStarts.Add(C(x0 + 3, y0 + 6) + Vector3.up * 0.1f);
+        extras.Add(l => BuildBonfire(l, x0 + 26, y0 + 6));
+    }
+
+    // Порыв ветра влево без окна и лопастей: Fan в режиме окна, укрытия = коллайдеры стволов.
+    static void BuildGale(Transform level, float x, float y, float burn, float range)
+    {
+        var root = new GameObject("GaleFan"); root.transform.SetParent(level, false); root.transform.position = new Vector3(x, y, 0);
+        var fan = root.AddComponent<Fan>(); fan.burn = burn; fan.range = range;
+    }
+
+    // Смола на сосне: Candle (чекпоинт и подпитка) с янтарной каплей вместо свечи.
+    static void BuildResin(Transform level, int tx, int ty)
+    {
+        var root = new GameObject("Resin"); root.transform.SetParent(level, false);
+        root.transform.position = new Vector3(tx + 0.5f, FloorTop(ty), 0);
+        Cube("Pine", root.transform, root.transform.position + new Vector3(0, 1.4f, 1.1f), new Vector3(0.8f, 3f, 0.8f), mTrunk, false);
+        var amber = Cube("Amber", root.transform, root.transform.position + new Vector3(0, 0.3f, 0.2f), new Vector3(0.3f, 0.3f, 0.3f), mResin, false);
+        amber.transform.rotation = Quaternion.Euler(0, 0, 45);
+        var fl = Sprite("Flame", root.transform, flameSprite, mSparkAdd, 0.45f); fl.transform.localPosition = Vector3.up * 0.6f;
+        var lt = new GameObject("Light").AddComponent<Light>(); lt.transform.SetParent(root.transform, false); lt.transform.localPosition = Vector3.up * 0.7f;
+        lt.type = LightType.Point; lt.color = new Color(1, .68f, .22f); lt.range = 6; lt.intensity = 4; lt.shadows = LightShadows.None;
+        var cd = root.AddComponent<Candle>(); cd.lightSrc = lt; cd.flameVis = fl;
+    }
+
+    // Холодный костёр под снегом, круг камней-рун. GiveFlame(all) + Bonfire = финал.
+    static void BuildBonfire(Transform level, int tx, int ty)
+    {
+        var root = new GameObject("Bonfire"); root.transform.SetParent(level, false);
+        var c = C(tx, ty); root.transform.position = c;
+        foreach (var rot in new[] { -20f, 20f, 0f })
+            Cube("Log", root.transform, c + new Vector3(0, -0.1f, 0.2f), new Vector3(2.6f, 0.4f, 0.5f), mWood, false).transform.rotation = Quaternion.Euler(0, rot * 2, rot);
+        var snow = Cube("SnowCover", root.transform, c + new Vector3(0, 0.35f, 0.2f), new Vector3(2.8f, 0.8f, 1.4f), mSnowCap, false);
+        var flame = Sprite("BigFlame", root.transform, flameSprite, mSparkAdd, 5f); flame.transform.position = c + new Vector3(0, 1.6f, 0.2f); flame.SetActive(false);
+        var lt = new GameObject("Glow").AddComponent<Light>(); lt.transform.SetParent(root.transform, false); lt.transform.position = c + new Vector3(0, 1.6f, -1f);
+        lt.type = LightType.Point; lt.color = new Color(1, .6f, .25f); lt.range = 0; lt.intensity = 0; lt.shadows = LightShadows.None; lt.enabled = false;
+        var runes = new System.Collections.Generic.List<Renderer>();
+        for (int i = 0; i < 9; i++)
+        {
+            float a = i / 8f * Mathf.PI;
+            runes.Add(Cube("Rune", root.transform, c + new Vector3(8 * Mathf.Cos(a), 0.4f, 0.2f + 2.6f * Mathf.Sin(a)), new Vector3(0.9f, 1.8f, 0.7f), mRune, false).GetComponent<Renderer>());
+        }
+        var give = root.AddComponent<GiveFlame>(); give.all = true; give.hold = 1.2f; give.reach = 2.8f;
+        var b = root.AddComponent<Bonfire>(); b.bigFlame = flame; b.snow = snow; b.glow = lt; b.runes = runes.ToArray();
+    }
+
     static Vector3 C(int tx, int ty, float z = 0) => new(tx + 0.5f, H - 1 - ty + 0.5f, z);
     static float FloorTop(int ty) => H - 1 - ty; // верх тайла, лежащего в строке ty
 
@@ -169,11 +309,12 @@ public static class OgonokBuilder
             for (int tx = 0; tx < W; tx++)
             {
                 char c = g[ty, tx];
-                if (c == '#' || c == 'm')
+                if (c == '#' || c == 'm' || c == 'n' || c == 'o')
                 {
                     int e = tx; while (e + 1 < W && g[ty, e + 1] == c) e++;
                     int len = e - tx + 1;
-                    Cube(c == '#' ? "Stone" : "Furniture", level, new Vector3(tx + len / 2f, H - 1 - ty + 0.5f, 0), new Vector3(len, 1, Depth), c == '#' ? mStone : mFurn);
+                    var (sn, sm) = c == '#' ? ("Stone", mStone) : c == 'm' ? ("Furniture", mFurn) : c == 'n' ? ("Trunk", mTrunk) : ("Crown", mCrown);
+                    Cube(sn, level, new Vector3(tx + len / 2f, H - 1 - ty + 0.5f, 0), new Vector3(len, 1, Depth), sm);
                     tx = e; continue;
                 }
                 var p = C(tx, ty);
@@ -199,6 +340,7 @@ public static class OgonokBuilder
                         var sp = dr.AddComponent<DripSpawner>(); sp.dropPrefab = dropPrefab; sp.phase = dripN++ % 3 * 0.7f;
                         if (c == 'e') boilerDrips.Add(sp); break;
                     case 'c': case 'k': BuildCandle(level, tx, ty, c == 'k'); break;
+                    case 'r': BuildResin(level, tx, ty); break;
                     case 'G': BuildFireplace(level, tx, ty, true); break;
                     case 'b': Cube("Plank", br.transform, p, new Vector3(1, 1, Depth), mWood); break;
                     case 'h': if (hatch.transform.childCount == 0) hatch.transform.position = p; Cube("HatchSlab", hatch.transform, p, new Vector3(1, 1, Depth), mWood); break;
@@ -428,6 +570,9 @@ public static class OgonokBuilder
         mDrop = Lit("Drop", new Color(0.44f, 0.69f, 0.91f));
         mFurn = Lit("Furniture", new Color(0.42f, 0.30f, 0.20f));
         mWindow = Lit("Window", new Color(0.35f, 0.45f, 0.62f)); mCurtain = Lit("WindowCurtain", new Color(0.55f, 0.28f, 0.30f));
+        mTrunk = Lit("Trunk", new Color(0.25f, 0.17f, 0.12f)); mCrown = Lit("Crown", new Color(0.08f, 0.2f, 0.16f)); mSnowCap = Lit("SnowCap", new Color(0.82f, 0.88f, 0.95f));
+        mResin = Lit("Resin", new Color(0.95f, 0.6f, 0.15f)); mRune = Lit("Rune", new Color(0.25f, 0.28f, 0.36f));
+        mFar = new Material(Shader.Find("Universal Render Pipeline/Unlit")); mFar.color = new Color(0.16f, 0.18f, 0.24f); AssetDatabase.DeleteAsset("Assets/Materials/Far.mat"); AssetDatabase.CreateAsset(mFar, "Assets/Materials/Far.mat");
         mWeb = Lit("Cobweb", new Color(0.85f, 0.85f, 0.88f)); mLamp = Lit("Lamp", new Color(0.55f, 0.38f, 0.18f)); mPipe = Lit("Pipe", new Color(0.22f, 0.24f, 0.30f));
 
         var drop = GameObject.CreatePrimitive(PrimitiveType.Sphere);
