@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-// «Отдать пламя»: удерживай E рядом (reach) hold секунд — объект забирает cost размера (all: всё, что есть).
+// «Отдать пламя»: удерживай E рядом (reach) hold секунд — объект забирает cost топлива (all: всё, что есть).
 // Если пламени не хватает, не отдаёт и не убивает. Переиспользуется котлом, финальным костром.
 public class GiveFlame : Interactable
 {
@@ -16,7 +16,7 @@ public class GiveFlame : Interactable
     public override void Tick(FlamePlayer p, Flame f, float dt)
     {
         if (Done) return;
-        near = Cheb(p, transform.position) <= reach; weak = !all && f.size < cost + minLeft;
+        near = Cheb(p, transform.position) <= reach; weak = !all && f.fuel < cost + minLeft;
         if (!near || !p.giveHeld || weak) { t = 0; return; }
         t += dt;
         if (UnityEngine.Random.value < 0.5f) Fx.Spark(p.transform.position, 1, 2f);
