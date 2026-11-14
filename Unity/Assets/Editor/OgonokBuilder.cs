@@ -9,7 +9,7 @@ using UnityEngine.Rendering.Universal;
 // зоны 3–6 дописываются новыми методами. Меню: Ogonok/Build Level 1. Batchmode: -executeMethod OgonokBuilder.Build
 //
 // Сетка: ty растёт вниз, мир: y центра строки r = H-1-r+0.5. Дом сверху (строки 0..13), подвал под ним и правее (14..29).
-// Символы: # камень, m мебель/ящик, I лёд, H лёд только от котла, R занавеска, T верёвка-мост (id wardrobe), L верёвка щеколды (id hatch),
+// Символы: # камень, m мебель/ящик, I лёд, i тонкий лёд (рушится сразу, если size >= 0.5 или рывок), H лёд только от котла, R занавеска, T верёвка-мост (id wardrobe), L верёвка щеколды (id hatch),
 // b плита моста, h плита люка, P провал (смерть), w паутина (вертикальная колонна = одна паутина), v решётка, p бумага, ~ лужа,
 // d капля, e капля, которую гасит котёл, c свеча, k керосинка, f газовый факел, g мусорный пакет (бумага), j верёвка-ремень вентилятора (id fanbelt), G выход из зоны (ZoneExit в зону 3).
 // Зоны 5–6 (P-3): n пень/бревно (коллайдер, укрытие от ветра), o крона (коллайдер, под ней снега нет), r смола (чекпоинт).
@@ -269,7 +269,7 @@ public static class OgonokBuilder
 
         // 2. Ручей: лёд (тает от size >= 0.5) над водой-Pit, два просвета для прыжка
         Ground(81, 151, 17);
-        B(66, 17, 80, 17, 'I'); B(66, 18, 80, 18, 'P'); B(71, 17, 72, 17, '.'); B(76, 17, 76, 17, '.');
+        B(66, 17, 80, 17, 'i'); B(66, 18, 80, 18, 'P'); B(71, 17, 72, 17, '.'); B(76, 17, 76, 17, '.');
         S(86, 16, 'r');
 
         // 3. Бурелом: брёвна (1 м), кроны; овраг 120..127: верёвка 118 роняет ствол-мост (id log)
@@ -404,6 +404,7 @@ public static class OgonokBuilder
                 switch (c)
                 {
                     case 'I': Cube("Ice", level, p, new Vector3(1, 1, 2), mIce).AddComponent<Ice>(); break;
+                    case 'i': Cube("Ice", level, p, new Vector3(1, 1, 2), mIce).AddComponent<Ice>().thin = true; break;
                     case 'H': var hi = Cube("IceHot", level, p, new Vector3(1, 1, 2), mIce).AddComponent<Ice>(); hi.heatOnly = true; heatIce.Add(hi); break;
                     case 'R': Cube("Curtain", level, p, new Vector3(0.8f, 1, 2), mRope).AddComponent<Rope>(); break;
                     case 'T': case 'L': case 'j':

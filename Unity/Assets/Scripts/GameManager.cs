@@ -61,6 +61,13 @@ public class GameManager : MonoBehaviour
 
     public void SetCheckpoint(Vector3 p) => cp = p;
 
+    // 334 → «5 мин 34 с», 48 → «48 с», 60 → «1 мин 0 с»
+    public static string FormatTime(float sec)
+    {
+        int t = Mathf.FloorToInt(sec);
+        return t < 60 ? $"{t} с" : $"{t / 60} мин {t % 60} с";
+    }
+
     // Отладка (F1..F6) и тесты: старт зоны n (1..6), если она уже собрана.
     public bool JumpToZone(int n)
     {
@@ -121,7 +128,7 @@ public class GameManager : MonoBehaviour
         {
             style.fontSize = Screen.height / 9; GUI.Label(new Rect(0, Screen.height * .25f, Screen.width, 100), winTitle, style);
             style.fontSize = Screen.height / 26;
-            GUI.Label(new Rect(0, Screen.height * .42f, Screen.width, 40), $"Время {playT:0.0} с · погасал {deaths} раз(а) · Enter — заново", style);
+            GUI.Label(new Rect(0, Screen.height * .42f, Screen.width, 40), $"Время {FormatTime(playT)} · погасал {deaths} раз(а) · Enter — заново", style);
             return;
         }
         if (player.flame.Dead) { GUI.Label(new Rect(0, Screen.height * .4f, Screen.width, 60), "Погас…", style); return; }

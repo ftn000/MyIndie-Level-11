@@ -734,6 +734,71 @@ public class LevelTests
         yield return null;
     }
 
+
+    // ---------- P-4 ----------
+
+    // Тонкий лёд леса: большой огонёк или рывок рушат его за <= 0.1 с (6 кадров) после касания, маленький стоит.
+    Ice FirstThinIce() => All<Ice>().Where(i => i.thin).OrderBy(i => i.transform.position.x).First();
+    float OnTop(Ice i, float size) => i.transform.position.y + 0.5f + (10 + 16 * size) / 64f + 0.02f;
+
+    [UnityTest] public IEnumerator ThinIceCollapsesAtOnceUnderBigFlame()
+    {
+        var ice = FirstThinIce(); var ip = ice.transform.position;
+        Tp(ip.x, OnTop(ice, 1f), 1f);
+        yield return Run(6, _ => (0, true, true, false, false)); // сразу прыгает
+        Assert.IsTrue(ice == null, "тонкий лёд провалился за <= 0.1 с, несмотря на прыжок");
+    }
+
+    [UnityTest] public IEnumerator ThinIceCollapsesUnderDash()
+    {
+        var ice = FirstThinIce(); var ip = ice.transform.position;
+        Tp(ip.x - 0.3f, OnTop(ice, 0.15f), 0.3f); // рывок отнимает 0.15: после него огонёк ниже, касание остаётся
+        var tr = ""; yield return Run(6, i => { tr += $"[{i} x={p.transform.position.x - ip.x:0.00} y={p.transform.position.y - ip.y:0.00} d={p.Dashing}]"; return (1, false, false, i == 0, false); });
+        Assert.IsTrue(ice == null, "рывок рушит тонкий лёд " + tr);
+    }
+
+    [UnityTest] public IEnumerator ThinIceHoldsSmallFlameStanding()
+    {
+        var ice = FirstThinIce(); var ip = ice.transform.position;
+        Tp(ip.x, OnTop(ice, 0.3f), 0.3f);
+        yield return Run(30, Idle);
+        Assert.IsTrue(ice != null, "под маленьким лёд цел");
+        Assert.IsFalse(p.flame.Dead);
+        Assert.AreEqual(ip.y + 0.5f + p.H, p.transform.position.y, 0.1f, "стоит на льду");
+    }
+
+    [UnityTest] public IEnumerator KitchenIceStillMeltsSlowly()
+    {
+        var ice = All<Ice>().Where(i => !i.heatOnly && !i.thin && InHouse(i)).OrderBy(i => i.transform.position.y).First();
+        Assert.IsFalse(ice.thin);
+        var ip = ice.transform.position;
+        Tp(ip.x - 0.3f, ip.y + 0.1f, 1f);
+        yield return Run(6, Idle);
+        Assert.IsTrue(ice != null, "лёд на кухне таял и раньше: не мгновенно");
+    }
+
+    [Test] public void WinTimeFormat()
+    {
+        Assert.AreEqual("5 мин 34 с", GameManager.FormatTime(334f));
+        Assert.AreEqual("48 с", GameManager.FormatTime(48f));
+        Assert.AreEqual("1 мин 0 с", GameManager.FormatTime(60f));
+        Assert.AreEqual("0 с", GameManager.FormatTime(0.4f));
+        Assert.AreEqual("59 с", GameManager.FormatTime(59.9f));
+    }
+
+    [UnityTest] public IEnumerator EveryUpdraftHasRunningParticles()
+    {
+        var ups = All<Updraft>(); Assert.Greater(ups.Length, 0);
+        for (int i = 0; i < 90; i++) yield return null;
+        foreach (var u in ups)
+        {
+            var ps = u.GetComponentInChildren<ParticleSystem>();
+            Assert.IsNotNull(ps, $"у потока {u.transform.position} нет частиц");
+            Assert.IsTrue(ps.isPlaying, "частицы потока идут");
+            Assert.Greater(ps.particleCount, 0, "и они есть в кадре");
+        }
+    }
+
     static void Capture(string path)
     {
         LogAssert.ignoreFailingMessages = true; // Camera.Render в batchmode шумит ошибкой шейдера редактора
