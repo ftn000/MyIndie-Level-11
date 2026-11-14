@@ -201,7 +201,7 @@ public class LevelTests
         var ice = FirstThinIce(); var ip = ice.transform.position;
         Tp(ip.x, OnTop(ice, Flame.NormalSize), 1f);
         yield return Run(6, Idle);
-        Assert.IsTrue(ice == null, "обычная форма проваливает тонкий лёд");
+        Assert.IsTrue(ice.Broken, "обычная форма проваливает тонкий лёд");
     }
 
     [UnityTest] public IEnumerator WindParticlesAppearInGust()
@@ -955,7 +955,7 @@ public class LevelTests
         var ice = FirstThinIce(); var ip = ice.transform.position;
         Tp(ip.x, OnTop(ice, Flame.NormalSize), 1f);
         yield return Run(6, _ => (0, true, true, false, false)); // сразу прыгает
-        Assert.IsTrue(ice == null, "тонкий лёд провалился за <= 0.1 с, несмотря на прыжок");
+        Assert.IsTrue(ice.Broken, "тонкий лёд провалился за <= 0.1 с, несмотря на прыжок");
     }
 
     [UnityTest] public IEnumerator ThinIceCollapsesUnderDash()
@@ -963,7 +963,7 @@ public class LevelTests
         var ice = FirstThinIce(); var ip = ice.transform.position;
         Tp(ip.x - 0.3f, OnTop(ice, Flame.SmallSize), 0.3f, Small); // рывок отнимает 0.15: после него огонёк ниже, касание остаётся
         var tr = ""; yield return Run(6, i => { tr += $"[{i} x={p.transform.position.x - ip.x:0.00} y={p.transform.position.y - ip.y:0.00} d={p.Dashing}]"; return (1, false, false, i == 0, true); }); // ↓ держит маленькую форму
-        Assert.IsTrue(ice == null, "рывок рушит тонкий лёд " + tr);
+        Assert.IsTrue(ice.Broken, "рывок рушит тонкий лёд " + tr);
     }
 
     [UnityTest] public IEnumerator ThinIceHoldsSmallFlameStanding()
@@ -971,7 +971,7 @@ public class LevelTests
         var ice = FirstThinIce(); var ip = ice.transform.position;
         Tp(ip.x, OnTop(ice, Flame.SmallSize), 0.3f, Small);
         yield return Run(30, _ => (0, false, false, false, true));
-        Assert.IsTrue(ice != null, "под маленьким лёд цел");
+        Assert.IsFalse(ice.Broken, "под маленьким лёд цел");
         Assert.IsFalse(p.flame.Dead);
         Assert.AreEqual(ip.y + 0.5f + p.H, p.transform.position.y, 0.1f, "стоит на льду");
     }
@@ -1199,5 +1199,77 @@ public class LevelTests
         var t = new Texture2D(1280, 720, TextureFormat.RGB24, false); t.ReadPixels(new Rect(0, 0, 1280, 720), 0, 0); t.Apply();
         System.IO.File.WriteAllBytes(path, t.EncodeToPNG());
         cam.targetTexture = null; RenderTexture.active = null;
+    }
+
+    // ---------- P-6: лёд-опора намерзает обратно ----------
+
+    Ice[] Creek1() => All<Ice>().Where(InForest).Where(i => i.transform.position.x < 100f).OrderBy(i => i.transform.position.x).ToArray();
+
+    [UnityTest] public IEnumerator BigFlameBreaksIceDiesThenSmallCrossesCreek()
+    {
+        var ice = Creek1(); Assert.Greater(ice.Length, 5);
+        var xs = ice.Select(i => i.transform.position.x).ToArray();
+        float first = xs[0], last = xs[xs.Length - 1], y = ice[0].transform.position.y + 1.1f;
+        Tp(first - 3f, y, 1f);
+        yield return Run(300, Right);
+        Assert.IsTrue(p.flame.Dead, "большой провалил лёд и упал");
+        Assert.IsTrue(ice.Any(i => i.Broken), "лёд провалился");
+        gm.Respawn();
+        Assert.IsTrue(ice.All(i => !i.Broken), "респаун вернул весь лёд-опору");
+        var gaps = xs.Zip(xs.Skip(1), (a, b) => (a, b)).Where(t => t.b - t.a > 1.5f).Select(t => t.a + 0.5f).ToArray();
+        Tp(first - 3f, y, 1f, Small);
+        yield return Run(600, _ =>
+        {
+            float x = p.transform.position.x;
+            return (1, true, p.Grounded && gaps.Any(e => x > e - 0.9f && x < e - 0.4f), false, true);
+        }, () => p.transform.position.x > last + 1.0f && p.Grounded);
+        Assert.IsFalse(p.flame.Dead, "маленький прошёл ручей после респауна");
+        Assert.Greater(p.transform.position.x, last + 1.0f);
+    }
+
+    IEnumerator Frames(int n) { for (int i = 0; i < n; i++) yield return null; }
+
+    [UnityTest] public IEnumerator SupportIceRefreezesAfterDelay()
+    {
+        var ice = FirstThinIce(); Tp(ice.transform.position.x, ice.transform.position.y + 8f, 1f); // огонёк далеко от льдины
+        ice.Melt();
+        Assert.IsTrue(ice.Broken);
+        yield return Frames(Mathf.RoundToInt((Ice.RefreezeWait - 0.5f) * 60));
+        Assert.IsTrue(ice.Broken && !ice.GetComponent<Collider>().enabled, "ещё не намёрзла");
+        yield return Frames(Mathf.RoundToInt((0.5f + Ice.FreezeTime + 0.3f) * 60));
+        Assert.IsFalse(ice.Broken, "намёрзла");
+        Assert.IsTrue(ice.GetComponent<Collider>().enabled && ice.GetComponent<Renderer>().enabled);
+        Assert.AreEqual(1f, ice.transform.localScale.x, 0.001f);
+    }
+
+    [UnityTest] public IEnumerator SupportIceWaitsWhilePlayerInside()
+    {
+        var ice = FirstThinIce(); var ip = ice.transform.position;
+        ice.Melt();
+        for (int i = 0; i < 6 * 60; i++) { p.transform.position = ip; yield return null; }
+        Assert.IsTrue(ice.Broken, "пока Игни внутри, лёд не твердеет");
+        Tp(ip.x, ip.y + 8f, 1f);
+        yield return Frames(Mathf.RoundToInt((Ice.FreezeTime + 0.3f) * 60));
+        Assert.IsFalse(ice.Broken, "ушёл, лёд сразу схватился");
+    }
+
+    [UnityTest] public IEnumerator SupportIceRestoresOnRespawn()
+    {
+        var ice = FirstThinIce(); ice.Melt();
+        gm.Respawn();
+        Assert.IsFalse(ice.Broken);
+        Assert.IsTrue(ice.GetComponent<Collider>().enabled);
+        yield return null;
+    }
+
+    [UnityTest] public IEnumerator BarrierIceStaysGoneAfterMelt()
+    {
+        var ice = All<Ice>().Where(i => !i.heatOnly && !i.thin && InHouse(i)).First();
+        Assert.IsFalse(ice.refreeze, "лёд кухни — преграда");
+        ice.Melt();
+        yield return Frames(7 * 60);
+        gm.Respawn();
+        yield return null;
+        Assert.IsTrue(ice == null, "преграда не возвращается ни со временем, ни после респауна");
     }
 }
