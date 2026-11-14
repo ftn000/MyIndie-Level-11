@@ -19,6 +19,10 @@ public class FlamePlayer : MonoBehaviour
     float coyote, buf, dashT, dashCd;
     const float Skin = 0.02f, Speed = 5.9f, Gravity = 31.25f, MaxFall = 16.25f;
 
+    public Vector2 Velocity => vel;
+    // Толчок (метан): vy всегда, vx только если задан.
+    public void Kick(float vy, float vx = float.NaN) { vel.y = vy; if (!float.IsNaN(vx)) vel.x = vx; dashT = 0; grounded = false; }
+
     public void Respawn(Vector3 pos) { transform.position = new Vector3(pos.x, pos.y, 0); vel = Vector2.zero; dashT = 0; }
 
     void Update()

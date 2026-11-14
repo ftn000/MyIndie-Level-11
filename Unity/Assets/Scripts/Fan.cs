@@ -90,7 +90,7 @@ public class Fan : Interactable
         }
         if (!gust) return;
         float fx = transform.position.x; var pp = p.transform.position;
-        if (pp.x > fx || pp.x < fx - range) return;
+        if (pp.x > fx || pp.x < fx - range || Mathf.Abs(pp.y - transform.position.y) > 8f) return; // этаж: под домом лежит канализация с теми же x
         var o = pp + Vector3.right * p.H;
         float dist = fx - o.x;
         if (dist > 0 && !Physics.Raycast(o, Vector3.right, dist, ~0, QueryTriggerInteraction.Ignore))

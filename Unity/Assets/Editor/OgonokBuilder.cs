@@ -11,15 +11,15 @@ using UnityEngine.Rendering.Universal;
 // Сетка: ty растёт вниз, мир: y центра строки r = H-1-r+0.5. Дом сверху (строки 0..13), подвал под ним и правее (14..29).
 // Символы: # камень, m мебель/ящик, I лёд, H лёд только от котла, R занавеска, T верёвка-мост (id wardrobe), L верёвка щеколды (id hatch),
 // b плита моста, h плита люка, P провал (смерть), w паутина (вертикальная колонна = одна паутина), v решётка, p бумага, ~ лужа,
-// d капля, e капля, которую гасит котёл, c свеча, k керосинка, G временная цель.
+// d капля, e капля, которую гасит котёл, c свеча, k керосинка, f газовый факел, g мусорный пакет (бумага), j верёвка-ремень вентилятора (id fanbelt), G выход из зоны (ZoneExit в зону 3).
 public static class OgonokBuilder
 {
-    const int W = 252, H = 30;
+    const int W = 252, H = 94;
     const float Depth = 4f;
     static char[,] g;
-    static Material mStone, mWall, mIce, mRope, mWax, mPaper, mWater, mGrate, mWood, mFire, mSparkAdd, mSteam, mDrop, mFurn, mWindow, mCurtain, mWeb, mLamp, mPipe;
+    static Material mStone, mWall, mIce, mRope, mWax, mPaper, mWater, mGrate, mWood, mFire, mSparkAdd, mSteam, mDrop, mFurn, mWindow, mCurtain, mWeb, mLamp, mPipe, mRaft, mBlade, mBag, mBubble;
     static Sprite flameSprite, dotSprite;
-    static GameObject dropPrefab;
+    static GameObject dropPrefab, bubblePrefab;
     static readonly System.Collections.Generic.List<(string name, int x0, int y0, int x1, int y1, string hex)> rooms = new();
     static readonly System.Collections.Generic.List<System.Action<Transform>> extras = new(); // объекты зон, которым нужны ссылки на уже собранные
     static readonly System.Collections.Generic.List<Ice> heatIce = new();
@@ -65,6 +65,8 @@ public static class OgonokBuilder
         rooms.Clear(); extras.Clear(); heatIce.Clear(); boilerDrips.Clear(); zoneStarts.Clear(); dripN = 0;
         Zone1House(0, 0);
         Zone2Basement(124, 14);
+        Zone3Sewer(0, 56);
+        Zone4Shaft(160, 30);
     }
 
     // Зона 1. Дом: пол этажа = строка 13, потолок 0, верх пола y = 17. Спальня «наверху»: её пол = строка 9 (y = 21).
@@ -148,6 +150,88 @@ public static class OgonokBuilder
         B(111, 6, 125, 11, '.'); S(118, 14, 'G');
     }
 
+    // Зона 3. Канализация: потолок строка 0, дно 15, уступы = камень в строках 13..14 (верх уступа = верх строки 13), вода = Pit в тех же строках.
+    // Вход 1..34 (три канала по 4 м), плоты 35..69, метановая галерея 70..125, развилка 126..159: внизу вода (тупик), наверху платформа,
+    // на неё поднимает тёплый поток 141..143; платформа входит в шахту (зона 4, x >= 160).
+    static void Zone3Sewer(int x0, int y0)
+    {
+        void B(int a, int b, int c, int d, char ch) => Box(x0 + a, y0 + b, x0 + c, y0 + d, ch);
+        void S(int a, int b, char ch) => g[y0 + b, x0 + a] = ch;
+        void Room(string n, int a, int b, int c, int d, string hex) => rooms.Add((n, x0 + a, y0 + b, x0 + c, y0 + d, hex));
+        void Ledge(int a, int c) => B(a, 13, c, 14, '#');
+        void Water(int a, int c) => B(a, 13, c, 14, 'P');
+        B(0, 0, 159, 0, '#'); B(0, 15, 159, 15, '#'); B(0, 0, 0, 15, '#');
+        Room("Сток: вход", 1, 1, 34, 14, "#10161a"); Room("Сток: плоты", 35, 1, 69, 14, "#0e1a1c");
+        Room("Сток: галерея", 70, 1, 125, 14, "#14181a"); Room("Сток: развилка", 126, 1, 159, 14, "#12161c");
+        zoneStarts.Add(C(x0 + 3, y0 + 12) + Vector3.up * 0.1f);
+        float top = FloorTop(y0 + 12); // верх уступов и вода по этому уровню
+
+        // 1. Вход: уступы над потоком
+        Ledge(1, 9); Water(10, 13); Ledge(14, 15); Water(16, 19); Ledge(20, 21); Water(22, 25); Ledge(26, 34);
+        S(4, 12, 'f'); S(15, 12, 'g'); S(30, 12, 'g');
+        // 2. Плоты: каналы с плотами и острова между ними
+        Water(35, 45); Ledge(46, 48); Water(49, 57); Ledge(58, 60); Water(61, 69);
+        S(47, 12, 'f'); S(59, 12, 'g');
+        extras.Add(l =>
+        {
+            BuildRaft(l, "Raft1", x0 + 38, x0 + 42, top, 0f); BuildRaft(l, "Raft2", x0 + 52, x0 + 55, top, 0.5f); BuildRaft(l, "Raft3", x0 + 64, x0 + 67, top, 0.25f);
+        });
+        // 3. Метановая галерея: широкий канал, пузыри как трамплины
+        Ledge(70, 81); Water(82, 107); Ledge(108, 125);
+        S(74, 12, 'f'); S(78, 12, 'g'); S(119, 12, 'f'); S(122, 12, 'g');
+        extras.Add(l => { for (int i = 0; i < 9; i++) BuildMethaneVent(l, x0 + 85.5f + 2.5f * i, top, i * 0.7f); });
+        // 4. Развилка: внизу вода (не туда), наверху платформа, к ней тёплый поток
+        Ledge(126, 143); Water(144, 159); B(144, 6, 159, 7, '#');
+        S(130, 12, 'g'); S(136, 12, 'f');
+        extras.Add(l =>
+        {
+            var u = new GameObject("Updraft"); u.transform.SetParent(l, false);
+            float yTop = H - (y0 + 2); // верх строки 2
+            u.transform.position = new Vector3(x0 + 142.5f, (top + yTop) / 2, 0); u.transform.localScale = new Vector3(3, yTop - top, 4);
+            u.AddComponent<Updraft>();
+        });
+    }
+
+    // Зона 4. Шахта: x 160..181, строки 30..71. Внизу вода (под входной платформой), вход слева строки 32..33 (продолжение платформы зоны 3).
+    // Подъём: поток D1 (7..9) к уступу A (1..5, строка 20), поток D2 (2..7) через вентилятор (строка 13) к уступу B (8..12, строка 6),
+    // вправо тоннелем (13..20, строки 3..5) с решёткой (16) к ZoneExit в зону 5. Ремень вентилятора висит над уступом A.
+    static void Zone4Shaft(int x0, int y0)
+    {
+        void B(int a, int b, int c, int d, char ch) => Box(x0 + a, y0 + b, x0 + c, y0 + d, ch);
+        void S(int a, int b, char ch) => g[y0 + b, x0 + a] = ch;
+        void Room(string n, int a, int b, int c, int d, string hex) => rooms.Add((n, x0 + a, y0 + b, x0 + c, y0 + d, hex));
+        B(0, 0, 21, 2, '#'); B(0, 0, 0, 25, '#'); B(21, 0, 21, 41, '#'); B(13, 6, 20, 41, '#'); B(0, 41, 12, 41, '#');
+        B(0, 39, 12, 40, 'P');
+        Room("Шахта", 1, 3, 12, 38, "#1a1d22"); Room("Шахта: тоннель", 13, 3, 20, 5, "#1a1d22");
+        var start = C(x0 + 3, y0 + 31) + Vector3.up * 0.1f; zoneStarts.Add(start);
+        extras.Add(l =>
+        {
+            var cp = new GameObject("ZoneStart4"); cp.transform.SetParent(l, false);
+            cp.transform.position = C(x0 + 3, y0 + 29); cp.transform.localScale = new Vector3(5, 4, 4);
+            cp.AddComponent<Checkpoint>().point = start;
+        });
+        void Draft(int a, int c, int rTop, int rBottom) // тайлы a..c по x, от строки rTop сверху до верха уступа под rBottom
+        {
+            extras.Add(l =>
+            {
+                float yTop = H - (y0 + rTop), yBot = FloorTop(y0 + rBottom);
+                var u = new GameObject("Updraft"); u.transform.SetParent(l, false);
+                u.transform.position = new Vector3(x0 + (a + c + 1) / 2f, (yTop + yBot) / 2, 0); u.transform.localScale = new Vector3(c - a + 1, yTop - yBot, 4);
+                u.AddComponent<Updraft>();
+            });
+        }
+        // 1. Тёплые потоки с уступами
+        B(0, 32, 9, 33, '#'); S(2, 31, 'c'); S(5, 31, 'g'); Draft(7, 9, 17, 31);
+        B(1, 20, 5, 21, '#'); S(2, 19, 'c'); S(4, 19, 'p'); B(3, 14, 3, 18, 'j');
+        // 2. Вентилятор: поток вдоль левой стены, лопасти на строке 13
+        Draft(2, 7, 3, 19);
+        extras.Add(l => BuildShaftFan(l, x0 + 7f, H - 1 - (y0 + 13) + 0.5f));
+        B(8, 6, 12, 7, '#'); S(10, 5, 'c');
+        // 3. Решётка: тоннель, фитилёк
+        S(14, 5, 'p'); B(16, 3, 16, 4, '#'); S(16, 5, 'v');
+        extras.Add(l => BuildExit(l, x0 + 19, y0 + 5, 5));
+    }
+
     static Vector3 C(int tx, int ty, float z = 0) => new(tx + 0.5f, H - 1 - ty + 0.5f, z);
     static float FloorTop(int ty) => H - 1 - ty; // верх тайла, лежащего в строке ty
 
@@ -182,8 +266,8 @@ public static class OgonokBuilder
                     case 'I': Cube("Ice", level, p, new Vector3(1, 1, 2), mIce).AddComponent<Ice>(); break;
                     case 'H': var hi = Cube("IceHot", level, p, new Vector3(1, 1, 2), mIce).AddComponent<Ice>(); hi.heatOnly = true; heatIce.Add(hi); break;
                     case 'R': Cube("Curtain", level, p, new Vector3(0.8f, 1, 2), mRope).AddComponent<Rope>(); break;
-                    case 'T': case 'L':
-                        var rp = Cube("Rope", level, p, new Vector3(0.2f, 1, 0.2f), mRope, false).AddComponent<Rope>(); rp.trigger = true; rp.id = c == 'T' ? "wardrobe" : "hatch"; break;
+                    case 'T': case 'L': case 'j':
+                        var rp = Cube("Rope", level, p, new Vector3(0.2f, 1, 0.2f), mRope, false).AddComponent<Rope>(); rp.trigger = true; rp.id = c == 'T' ? "wardrobe" : c == 'L' ? "hatch" : "fanbelt"; break;
                     case 'v':
                         var v = Cube("Vent", level, p, new Vector3(1, 1, Depth), mGrate);
                         v.AddComponent<Vent>().col = v.GetComponent<Collider>(); break;
@@ -199,7 +283,9 @@ public static class OgonokBuilder
                         var sp = dr.AddComponent<DripSpawner>(); sp.dropPrefab = dropPrefab; sp.phase = dripN++ % 3 * 0.7f;
                         if (c == 'e') boilerDrips.Add(sp); break;
                     case 'c': case 'k': BuildCandle(level, tx, ty, c == 'k'); break;
-                    case 'G': BuildFireplace(level, tx, ty, true); break;
+                    case 'G': BuildExit(level, tx, ty, 3); break;
+                    case 'f': BuildCandle(level, tx, ty, false, true); break;
+                    case 'g': var bag = Cube("Bag", level, p + Vector3.down * 0.1f, new Vector3(0.5f, 0.4f, 0.3f), mBag, false); bag.AddComponent<Paper>(); break;
                     case 'b': Cube("Plank", br.transform, p, new Vector3(1, 1, Depth), mWood); break;
                     case 'h': if (hatch.transform.childCount == 0) hatch.transform.position = p; Cube("HatchSlab", hatch.transform, p, new Vector3(1, 1, Depth), mWood); break;
                     case 'w':
@@ -211,7 +297,9 @@ public static class OgonokBuilder
                         int ep = tx; while (ep + 1 < W && g[ty, ep + 1] == 'P') ep++;
                         var pit = new GameObject("Pit"); pit.transform.SetParent(level, false);
                         pit.transform.position = new Vector3(tx + (ep - tx + 1) / 2f, p.y, 0); pit.transform.localScale = new Vector3(ep - tx + 1, 1, 3);
-                        pit.AddComponent<Pit>(); break;
+                        pit.AddComponent<Pit>();
+                        if (ty >= 56) Cube("Water", level, pit.transform.position + Vector3.down * 0.05f, new Vector3(ep - tx + 1, 0.9f, 2.5f), mWater, false); // вода канализации и шахты; провал спальни без воды
+                        break;
                 }
             }
         foreach (var (name, a, b, c2, d, hex) in rooms)
@@ -221,18 +309,50 @@ public static class OgonokBuilder
         }
     }
 
-    static void BuildCandle(Transform level, int tx, int ty, bool lamp)
+    static void BuildCandle(Transform level, int tx, int ty, bool lamp, bool torch = false)
     {
-        var root = new GameObject(lamp ? "Lamp" : "Candle"); root.transform.SetParent(level, false);
+        if (torch) lamp = true; // газовый факел = керосинка другого цвета (только параметры и материал)
+        var root = new GameObject(torch ? "Torch" : lamp ? "Lamp" : "Candle"); root.transform.SetParent(level, false);
         root.transform.position = new Vector3(tx + 0.5f, FloorTop(ty), 0);
         var wax = GameObject.CreatePrimitive(PrimitiveType.Cylinder); wax.name = "Wax"; Object.DestroyImmediate(wax.GetComponent<Collider>());
         wax.transform.SetParent(root.transform, false); wax.transform.localPosition = Vector3.up * (lamp ? 0.3f : 0.2f);
         wax.transform.localScale = lamp ? new Vector3(0.36f, 0.3f, 0.36f) : new Vector3(0.22f, 0.2f, 0.22f);
-        wax.GetComponent<Renderer>().sharedMaterial = lamp ? mLamp : mWax;
+        wax.GetComponent<Renderer>().sharedMaterial = torch ? mPipe : lamp ? mLamp : mWax;
         var fl = Sprite("Flame", root.transform, flameSprite, mSparkAdd, lamp ? 0.8f : 0.55f); fl.transform.localPosition = Vector3.up * (lamp ? 0.85f : 0.62f);
         var lt = new GameObject("Light").AddComponent<Light>(); lt.transform.SetParent(root.transform, false); lt.transform.localPosition = Vector3.up * (lamp ? 0.95f : 0.7f);
-        lt.type = LightType.Point; lt.color = lamp ? new Color(1, .5f, .18f) : new Color(1, .62f, .28f); lt.range = lamp ? 10 : 7; lt.intensity = lamp ? 7 : 5; lt.shadows = LightShadows.None;
+        lt.type = LightType.Point; lt.color = torch ? new Color(.55f, .75f, 1f) : lamp ? new Color(1, .5f, .18f) : new Color(1, .62f, .28f); lt.range = lamp ? 10 : 7; lt.intensity = lamp ? 7 : 5; lt.shadows = LightShadows.None;
+        if (torch) fl.GetComponent<SpriteRenderer>().color = new Color(.6f, .8f, 1f);
         var cd = root.AddComponent<Candle>(); cd.lightSrc = lt; cd.flameVis = fl;
+    }
+
+    // Плот: верх вровень с уступами (top), центр ходит между xa и xb. Вода под ним (Pit) гасит, пока игрок не на плоту.
+    static void BuildRaft(Transform level, string n, float xa, float xb, float top, float phase)
+    {
+        var r = Cube(n, level, new Vector3(xa, top - 0.2f, 0), new Vector3(3f, 0.4f, 3f), mRaft);
+        var raft = r.AddComponent<Raft>(); raft.a = xa; raft.b = xb; raft.phase = phase;
+    }
+
+    static void BuildMethaneVent(Transform level, float x, float top, float phase)
+    {
+        var v = new GameObject("MethaneVent"); v.transform.SetParent(level, false); v.transform.position = new Vector3(x, top, 0);
+        var mv = v.AddComponent<MethaneVent>(); mv.bubblePrefab = bubblePrefab; mv.phase = phase;
+    }
+
+    // Вентилятор: втулка и две лопасти (визуал двигает ShaftFan.LateUpdate). Ремень = верёвка 'j' в сетке.
+    static void BuildShaftFan(Transform level, float x, float y)
+    {
+        var root = new GameObject("ShaftFan"); root.transform.SetParent(level, false); root.transform.position = new Vector3(x, y, 0);
+        var fan = root.AddComponent<ShaftFan>();
+        Cube("Hub", root.transform, root.transform.position, new Vector3(0.8f, 0.8f, 0.8f), mBlade, false);
+        fan.blades = new[] { Cube("Blade0", root.transform, root.transform.position, Vector3.one, mBlade, false).transform, Cube("Blade1", root.transform, root.transform.position, Vector3.one, mBlade, false).transform };
+    }
+
+    // Выход из зоны: невидимый объём над полом в тайле (tx, ty).
+    static void BuildExit(Transform level, int tx, int ty, int target)
+    {
+        var go = new GameObject("ZoneExit" + target); go.transform.SetParent(level, false);
+        go.transform.position = C(tx, ty) + Vector3.up; go.transform.localScale = new Vector3(3, 3, 3);
+        go.AddComponent<ZoneExit>().target = target;
     }
 
     static GameObject Sprite(string n, Transform parent, Sprite s, Material m, float scale)
@@ -428,6 +548,8 @@ public static class OgonokBuilder
         mDrop = Lit("Drop", new Color(0.44f, 0.69f, 0.91f));
         mFurn = Lit("Furniture", new Color(0.42f, 0.30f, 0.20f));
         mWindow = Lit("Window", new Color(0.35f, 0.45f, 0.62f)); mCurtain = Lit("WindowCurtain", new Color(0.55f, 0.28f, 0.30f));
+        mRaft = Lit("Raft", new Color(0.36f, 0.30f, 0.24f)); mBlade = Lit("Blade", new Color(0.30f, 0.32f, 0.36f)); mBag = Lit("Bag", new Color(0.12f, 0.16f, 0.12f));
+        mBubble = Shaded("Bubble", "Mobile/Particles/Additive", dotSprite, new Color(0.4f, 1f, 0.55f, 1));
         mWeb = Lit("Cobweb", new Color(0.85f, 0.85f, 0.88f)); mLamp = Lit("Lamp", new Color(0.55f, 0.38f, 0.18f)); mPipe = Lit("Pipe", new Color(0.22f, 0.24f, 0.30f));
 
         var drop = GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -436,5 +558,9 @@ public static class OgonokBuilder
         drop.AddComponent<Drop>();
         dropPrefab = PrefabUtility.SaveAsPrefabAsset(drop, "Assets/Prefabs/Drop.prefab");
         Object.DestroyImmediate(drop);
+
+        var bub = Sprite("Bubble", null, dotSprite, mBubble, 0.8f); bub.AddComponent<Methane>();
+        bubblePrefab = PrefabUtility.SaveAsPrefabAsset(bub, "Assets/Prefabs/Bubble.prefab");
+        Object.DestroyImmediate(bub);
     }
 }
