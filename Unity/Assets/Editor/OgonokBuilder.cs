@@ -9,13 +9,14 @@ using UnityEngine.Rendering.Universal;
 // зоны 3–6 дописываются новыми методами. Меню: Ogonok/Build Level 1. Batchmode: -executeMethod OgonokBuilder.Build
 //
 // Сетка: ty растёт вниз, мир: y центра строки r = H-1-r+0.5. Дом сверху (строки 0..13), подвал под ним и правее (14..29).
-// Символы: # камень, m мебель/ящик, I лёд, H лёд только от котла, R занавеска, T верёвка-мост (id wardrobe), L верёвка щеколды (id hatch),
+// Символы: # камень, m мебель/ящик, I лёд, i тонкий лёд (рушится сразу, если size >= 0.5 или рывок), H лёд только от котла, R занавеска, T верёвка-мост (id wardrobe), L верёвка щеколды (id hatch),
 // b плита моста, h плита люка, P провал (смерть), w паутина (вертикальная колонна = одна паутина), v решётка, p бумага, ~ лужа,
 // d капля, e капля, которую гасит котёл, c свеча, k керосинка, f газовый факел, g мусорный пакет (бумага), j верёвка-ремень вентилятора (id fanbelt), G выход из зоны (ZoneExit в зону 3).
 // Зоны 5–6 (P-3): n пень/бревно (коллайдер, укрытие от ветра), o крона (коллайдер, под ней снега нет), r смола (чекпоинт).
 public static class OgonokBuilder
 {
-    const int W = 252, H = 94;
+    // P-4: вставки в зоны (м): дом, подвал, канализация, лес. Зоны 2, 4, 6 сдвинуты вправо на сумму вставок слева от них.
+    const int D1 = 90, D2 = 80, D3 = 110, D5 = 190, W = 442, H = 94;
     const float Depth = 4f;
     static char[,] g;
     static Material mStone, mWall, mIce, mRope, mWax, mPaper, mWater, mGrate, mWood, mFire, mSparkAdd, mSteam, mDrop, mFurn, mWindow, mCurtain, mWeb, mLamp, mPipe, mRaft, mBlade, mBag, mBubble;
@@ -29,9 +30,18 @@ public static class OgonokBuilder
     static readonly System.Collections.Generic.List<Vector3> zoneStarts = new();
     static int dripN;
 
+    // Превью арта команды (P-4): отдельная сцена Level1Art, грейбокс без него собирается как раньше (Level1). Файлы: Assets/Art/Preview.
     [MenuItem("Ogonok/Build Level 1")]
-    public static void Build()
+    public static void Build() => BuildLevel(false);
+    [MenuItem("Ogonok/Build Level 1 (Art Preview)")]
+    public static void BuildArt() => BuildLevel(true);
+    static bool art;
+    static Sprite wispSprite;
+    static Material mWisp;
+
+    static void BuildLevel(bool withArt)
     {
+        art = withArt;
         foreach (var d in new[] { "Materials", "Art", "Prefabs", "Scenes" }) Directory.CreateDirectory(Path.Combine(Application.dataPath, d));
         MakeAssets();
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -51,10 +61,11 @@ public static class OgonokBuilder
         var gm = new GameObject("GameManager").AddComponent<GameManager>();
         gm.player = player; gm.zoneStart = zoneStarts.ToArray();
 
-        EditorSceneManager.SaveScene(scene, "Assets/Scenes/Level1.unity");
-        EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene("Assets/Scenes/Level1.unity", true) };
+        if (art) BuildArtBackdrop();
+        EditorSceneManager.SaveScene(scene, art ? "Assets/Scenes/Level1Art.unity" : "Assets/Scenes/Level1.unity");
+        if (!art) EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene("Assets/Scenes/Level1.unity", true) };
         AssetDatabase.SaveAssets();
-        Debug.Log("Ogonok: Level1 built");
+        Debug.Log(art ? "Ogonok: Level1Art built" : "Ogonok: Level1 built");
     }
 
     // ---------- уровень: сетка из зон ----------
@@ -66,29 +77,33 @@ public static class OgonokBuilder
         Box(0, 0, W - 1, H - 1, '.');
         rooms.Clear(); extras.Clear(); heatIce.Clear(); boilerDrips.Clear(); zoneStarts.Clear(); dripN = 0;
         Zone1House(0, 0);
-        Zone2Basement(124, 14);
+        Zone2Basement(124 + D1, 14);
         Zone3Sewer(0, 56);
-        Zone4Shaft(160, 30);
+        Zone4Shaft(160 + D3, 30);
         Zone5Forest(0, 74);
-        Zone6Bonfire(200, 74);
+        Zone6Bonfire(200 + D5, 74);
     }
 
     // Зона 1. Дом: пол этажа = строка 13, потолок 0, верх пола y = 17. Спальня «наверху»: её пол = строка 9 (y = 21).
-    // Гостиная 1..29, коридор 31..68, кухня 70..95, спальня 97..138; люк в подвал a = 133..134.
+    // Гостиная 1..29, коридор 31..68, кухня 70..95; P-4: кладовка 97..120, ванная 121..148, холл со сквозняком 149..186 (вставка D1 = 90 м);
+    // спальня (97..138)+D1, люк в подвал a = (133..134)+D1. Чекпоинты (свечи): кухня 93, спальня 103+D1. Остальное топливо: бумага.
     static void Zone1House(int x0, int y0)
     {
         void B(int a, int b, int c, int d, char ch) => Box(x0 + a, y0 + b, x0 + c, y0 + d, ch);
         void S(int a, int b, char ch) => g[y0 + b, x0 + a] = ch;
+        void Bd(int a, int b, int c, int d, char ch) => Box(x0 + D1 + a, y0 + b, x0 + D1 + c, y0 + d, ch); // спальня и дальше: сдвиг на вставку
+        void Sd(int a, int b, char ch) => g[y0 + b, x0 + D1 + a] = ch;
         void Room(string n, int a, int b, int c, int d, string hex) => rooms.Add((n, x0 + a, y0 + b, x0 + c, y0 + d, hex));
-        B(0, 0, 139, 0, '#'); B(0, 13, 139, 13, '#'); B(0, 0, 0, 13, '#'); B(139, 0, 139, 13, '#');
+        B(0, 0, 139 + D1, 0, '#'); B(0, 13, 139 + D1, 13, '#'); B(0, 0, 0, 13, '#'); B(139 + D1, 0, 139 + D1, 13, '#');
         Room("Гостиная", 1, 1, 29, 12, "#4a3030"); Room("Коридор", 31, 1, 68, 12, "#2c3a4c"); Room("Кухня", 70, 1, 95, 12, "#2f4a3a");
-        Room("Спальня", 97, 1, 138, 8, "#40324f"); Room("Лестница", 97, 9, 99, 12, "#40324f");
+        Room("Кладовка", 97, 1, 120, 12, "#2e2824"); Room("Ванная", 121, 1, 148, 12, "#2a4650"); Room("Холл", 149, 1, 186, 12, "#3a3048");
+        Room("Спальня", 97 + D1, 1, 138 + D1, 8, "#40324f"); Room("Лестница", 97 + D1, 9, 99 + D1, 12, "#40324f");
         zoneStarts.Add(C(x0 + 3, y0 + 12) + Vector3.up * 0.1f);
 
-        // 1. Гостиная (обучение): камин, журнальный столик, кресло с газетой, комод со свечой
+        // 1. Гостиная (обучение): камин, журнальный столик, кресло с газетой, комод с газетой
         extras.Add(l => BuildFireplace(l, x0 + 3, y0 + 12, false));
         B(8, 11, 9, 12, 'm'); B(12, 9, 13, 12, 'm'); S(12, 8, 'p'); S(19, 12, 'p');
-        B(24, 11, 26, 12, 'm'); S(25, 10, 'c');
+        B(24, 11, 26, 12, 'm'); S(25, 10, 'p');
         B(30, 1, 30, 5, '#');
 
         // 2. Коридор: окно A (порыв только толкает), окно B (порыв гасит). Укрытия: мебель между игроком и окном.
@@ -96,35 +111,56 @@ public static class OgonokBuilder
         S(37, 10, 'p'); S(41, 10, 'p');
         B(51, 11, 52, 12, 'm'); B(56, 11, 56, 12, 'm'); B(60, 11, 61, 12, 'm'); S(60, 10, 'p');
         extras.Add(l => { BuildWindow(l, x0 + 47, y0 + 12, 0f, 13f, "WindowFanA", 0f); BuildWindow(l, x0 + 67, y0 + 12, 0.75f, 19f, "WindowFanB", 1.5f); });
-        S(68, 12, 'c'); B(69, 1, 69, 5, '#');
+        S(66, 12, 'p'); B(69, 1, 69, 5, '#');
 
-        // 3. Кухня: три капли, лужи, газеты; свеча и лёд на подоконнике-проёме
+        // 3. Кухня: три капли, лужи, газеты; свеча (чекпоинт) и лёд на подоконнике-проёме
         B(72, 11, 73, 12, 'm'); S(72, 10, 'p');
         foreach (var a in new[] { 74, 79, 84 }) S(a, 1, 'd');
         foreach (var a in new[] { 76, 77, 81, 82, 87, 88, 89 }) S(a, 12, '~');
         S(84, 12, 'p'); S(93, 12, 'c');
         B(96, 1, 96, 10, '#'); S(96, 11, 'I'); S(96, 12, 'I');
 
-        // 4. Спальня: ступени, свеча, паутина, занавеска, верёвка шкафа, провал 116..125 с мостом, свеча, щеколда и люк
-        B(98, 11, 99, 12, 'm'); B(100, 9, 138, 13, '#');
-        S(103, 8, 'c'); B(106, 4, 106, 8, 'w'); B(110, 1, 110, 8, 'R'); B(113, 2, 113, 6, 'T');
-        B(116, 9, 125, 12, '.'); B(116, 12, 125, 12, 'P'); B(116, 9, 125, 9, 'b');
-        S(128, 8, 'c'); B(133, 2, 133, 6, 'L');
-        B(133, 10, 134, 13, '.'); S(133, 9, 'h'); S(134, 9, 'h');
-        S(121, 6, 'p'); // сверху над мостом: подпитка за прыжок, если решился перепрыгнуть
+        // 3b. Кладовка (темно): полки с газетами и колонны паутины, каждая берёт 0.05
+        foreach (var a in new[] { 100, 107, 114 }) { B(a, 11, a + 1, 12, 'm'); S(a, 10, 'p'); }
+        foreach (var a in new[] { 98, 103, 110, 117 }) B(a, 1, a, 12, 'w');
+        S(120, 12, 'p'); B(120, 1, 120, 5, '#');
+
+        // 3c. Ванная: капли над лужами, ванна-ящик, лёд на выходе (нужно большое пламя: газеты перед ним)
+        foreach (var a in new[] { 124, 130, 136 }) { S(a, 1, 'd'); B(a - 1, 12, a + 1, 12, '~'); }
+        B(139, 11, 140, 12, 'm'); S(139, 10, 'p'); S(142, 12, 'p'); S(144, 12, 'p'); S(145, 12, 'p');
+        B(146, 1, 146, 10, '#'); S(146, 11, 'I'); S(146, 12, 'I');
+
+        // 3d. Холл: сквозняк окна C (справа), мебель-укрытия, между ними паутина. Пережидай порыв за мебелью
+        S(150, 12, 'p');
+        foreach (var a in new[] { 153, 160, 167, 174 }) { B(a, 11, a + 1, 12, 'm'); S(a, 10, 'p'); }
+        foreach (var a in new[] { 157, 164, 171, 178 }) B(a, 1, a, 12, 'w');
+        S(182, 12, 'p');
+        extras.Add(l => BuildWindow(l, x0 + 185, y0 + 12, 0.4f, 30f, "WindowFanC", 0.8f));
+
+        // 4. Спальня: ступени, свеча (чекпоинт), паутина, занавеска, верёвка шкафа, провал 116..125 с мостом, щеколда и люк
+        Bd(98, 11, 99, 12, 'm'); Bd(100, 9, 138, 13, '#');
+        Sd(103, 8, 'c'); Bd(106, 4, 106, 8, 'w'); Bd(110, 1, 110, 8, 'R'); Bd(113, 2, 113, 6, 'T');
+        Bd(116, 9, 125, 12, '.'); Bd(116, 12, 125, 12, 'P'); Bd(116, 9, 125, 9, 'b');
+        Sd(128, 8, 'p'); Bd(133, 2, 133, 6, 'L');
+        Bd(133, 10, 134, 13, '.'); Sd(133, 9, 'h'); Sd(134, 9, 'h');
+        Sd(121, 6, 'p'); // сверху над мостом: подпитка за прыжок, если решился перепрыгнуть
     }
 
     // Зона 2. Подвал: потолок строка 0 (глобально 14), пол 15, верх пола y = 1. Шахта люка a = 9..10 (под люком дома).
-    // Спуск 1..29, затопленный пол 31..62, котельная 64..95, сухой слив 97..126.
+    // Спуск 1..29, затопленный пол 31..62, P-4: винный погреб 64..143 (вставка D2 = 80: бочки и мост-полка на верёвке, капельная галерея,
+    // второй мост-полка под каплями), котельная (64..95)+D2, сухой слив (97..126)+D2. Чекпоинт: керосинка перед котлом.
     static void Zone2Basement(int x0, int y0)
     {
         void B(int a, int b, int c, int d, char ch) => Box(x0 + a, y0 + b, x0 + c, y0 + d, ch);
         void S(int a, int b, char ch) => g[y0 + b, x0 + a] = ch;
+        void B2(int a, int b, int c, int d, char ch) => Box(x0 + D2 + a, y0 + b, x0 + D2 + c, y0 + d, ch);
+        void S2(int a, int b, char ch) => g[y0 + b, x0 + D2 + a] = ch;
         void Room(string n, int a, int b, int c, int d, string hex) => rooms.Add((n, x0 + a, y0 + b, x0 + c, y0 + d, hex));
-        B(0, 0, 127, 0, '#'); B(0, 15, 127, 15, '#'); B(0, 0, 0, 15, '#'); B(127, 0, 127, 15, '#');
+        B(0, 0, 127 + D2, 0, '#'); B(0, 15, 127 + D2, 15, '#'); B(0, 0, 0, 15, '#'); B(127 + D2, 0, 127 + D2, 15, '#');
         B(9, 0, 10, 0, '.'); // шахта люка
-        Room("Спуск", 1, 1, 29, 14, "#2a3238"); Room("Затопленный пол", 31, 1, 62, 14, "#1f3a48"); Room("Котельная", 64, 1, 95, 14, "#4a2e26");
-        Room("Слив", 97, 12, 126, 14, "#26262c"); Room("Слив (камера)", 111, 6, 125, 11, "#26262c");
+        Room("Спуск", 1, 1, 29, 14, "#2a3238"); Room("Затопленный пол", 31, 1, 62, 14, "#1f3a48"); Room("Винный погреб", 64, 1, 142, 14, "#3a2830");
+        Room("Котельная", 64 + D2, 1, 95 + D2, 14, "#4a2e26");
+        Room("Слив", 97 + D2, 12, 126 + D2, 14, "#26262c"); Room("Слив (камера)", 111 + D2, 6, 125 + D2, 11, "#26262c");
         var start = C(x0 + 12, y0 + 14); zoneStarts.Add(start);
         extras.Add(l =>
         {
@@ -143,20 +179,42 @@ public static class OgonokBuilder
         S(37, 12, 'p'); S(43, 12, 'p'); S(49, 12, 'p'); S(60, 14, 'p');
         B(63, 1, 63, 8, '#');
 
-        // 3. Котельная: керосинка, капли над котлом (гаснут после запуска), котёл
-        S(66, 14, 'k');
-        foreach (var a in new[] { 76, 81, 86 }) S(a, 1, 'e');
-        extras.Add(l => BuildBoiler(l, x0 + 89, y0 + 14));
+        // 2b. Винный погреб. Пол = строка 15, мост-полка кладётся в строке 15 кодом (extras), под ним пустота и Pit в той же строке.
+        // A (64..95): бочки, провал 76..83: верёвка 'U' (id shelf1) роняет полку, над ней две капли.
+        S(66, 14, 'p'); B(68, 13, 69, 14, 'm'); S(68, 12, 'p');
+        B(73, 2, 73, 12, 'U'); B(76, 15, 83, 15, 'P'); S(78, 1, 'd'); S(81, 1, 'd');
+        B(88, 13, 89, 14, 'm'); S(88, 12, 'p'); S(92, 14, 'p');
+        // B (96..119): капельная галерея, лужи под каплями, газеты между ними
+        foreach (var a in new[] { 98, 103, 108, 113, 118 }) { S(a, 1, 'd'); B(a, 14, a + 1, 14, '~'); }
+        S(101, 14, 'p'); S(105, 14, 'p'); S(111, 14, 'p'); S(116, 14, 'p');
+        // C (120..142): второй провал 128..137, верёвка 'V' (id shelf2), три капли над полкой
+        B(122, 13, 123, 14, 'm'); S(125, 14, 'p'); B(124, 2, 124, 12, 'V'); B(128, 15, 137, 15, 'P');
+        S(130, 1, 'd'); S(133, 1, 'd'); S(136, 1, 'd'); B(140, 13, 141, 14, 'm'); S(140, 12, 'p'); S(139, 14, 'p');
+        B(143, 1, 143, 8, '#');
+        extras.Add(l =>
+        {
+            foreach (var (id, a, c) in new[] { ("shelf1", 76, 83), ("shelf2", 128, 137) })
+            {
+                var br = new GameObject("Bridge_" + id); br.transform.SetParent(l, false); br.AddComponent<Bridge>().id = id;
+                for (int x = a; x <= c; x++) Cube("ShelfPlank", br.transform, C(x0 + x, y0 + 15), new Vector3(1, 1, Depth), mWood);
+            }
+        });
+
+        // 3. Котельная: керосинка (чекпоинт), капли над котлом (гаснут после запуска), котёл
+        S2(66, 14, 'k');
+        foreach (var a in new[] { 76, 81, 86 }) S2(a, 1, 'e');
+        extras.Add(l => BuildBoiler(l, x0 + D2 + 89, y0 + 14));
 
         // 4. Сухой слив: низкий тоннель 12..14, лёд только от котла, последняя капля, решётка, камера с целью
-        B(96, 1, 126, 11, '#'); B(98, 12, 98, 14, 'H'); S(104, 12, 'd');
-        B(110, 12, 110, 13, '#'); S(110, 14, 'v');
-        B(111, 6, 125, 11, '.'); S(118, 14, 'G');
+        B2(96, 1, 126, 11, '#'); B2(98, 12, 98, 14, 'H'); S2(104, 12, 'd');
+        B2(110, 12, 110, 13, '#'); S2(110, 14, 'v');
+        B2(111, 6, 125, 11, '.'); S2(118, 14, 'G');
     }
 
     // Зона 3. Канализация: потолок строка 0, дно 15, уступы = камень в строках 13..14 (верх уступа = верх строки 13), вода = Pit в тех же строках.
-    // Вход 1..34 (три канала по 4 м), плоты 35..69, метановая галерея 70..125, развилка 126..159: внизу вода (тупик), наверху платформа,
-    // на неё поднимает тёплый поток 141..143; платформа входит в шахту (зона 4, x >= 160).
+    // Вход 1..34 (три канала по 4 м), плоты 35..69, метановая галерея 70..125, P-4: вторые плоты 126..181 (4 канала) и тёмный тоннель 182..235
+    // с метановым провалом 206..221 (вставка D3 = 110), развилка (126..159)+D3: внизу вода (тупик), наверху платформа,
+    // на неё поднимает тёплый поток; платформа входит в шахту (зона 4, x >= 160+D3). Чекпоинты (факелы): 119 и 188; остальное топливо: мешки.
     static void Zone3Sewer(int x0, int y0)
     {
         void B(int a, int b, int c, int d, char ch) => Box(x0 + a, y0 + b, x0 + c, y0 + d, ch);
@@ -164,49 +222,68 @@ public static class OgonokBuilder
         void Room(string n, int a, int b, int c, int d, string hex) => rooms.Add((n, x0 + a, y0 + b, x0 + c, y0 + d, hex));
         void Ledge(int a, int c) => B(a, 13, c, 14, '#');
         void Water(int a, int c) => B(a, 13, c, 14, 'P');
-        B(0, 0, 159, 0, '#'); B(0, 15, 159, 15, '#'); B(0, 0, 0, 15, '#');
+        B(0, 0, 159 + D3, 0, '#'); B(0, 15, 159 + D3, 15, '#'); B(0, 0, 0, 15, '#');
         Room("Сток: вход", 1, 1, 34, 14, "#10161a"); Room("Сток: плоты", 35, 1, 69, 14, "#0e1a1c");
-        Room("Сток: галерея", 70, 1, 125, 14, "#14181a"); Room("Сток: развилка", 126, 1, 159, 14, "#12161c");
+        Room("Сток: галерея", 70, 1, 125, 14, "#14181a"); Room("Сток: плоты 2", 126, 1, 181, 14, "#0e1a1c");
+        Room("Сток: тоннель", 182, 1, 235, 14, "#0a1012"); Room("Сток: развилка", 126 + D3, 1, 159 + D3, 14, "#12161c");
         zoneStarts.Add(C(x0 + 3, y0 + 12) + Vector3.up * 0.1f);
         float top = FloorTop(y0 + 12); // верх уступов и вода по этому уровню
 
         // 1. Вход: уступы над потоком
         Ledge(1, 9); Water(10, 13); Ledge(14, 15); Water(16, 19); Ledge(20, 21); Water(22, 25); Ledge(26, 34);
-        S(4, 12, 'f'); S(15, 12, 'g'); S(30, 12, 'g');
+        S(4, 12, 'g'); S(15, 12, 'g'); S(30, 12, 'g');
         // 2. Плоты: каналы с плотами и острова между ними
         Water(35, 45); Ledge(46, 48); Water(49, 57); Ledge(58, 60); Water(61, 69);
-        S(47, 12, 'f'); S(59, 12, 'g');
+        S(47, 12, 'g'); S(59, 12, 'g');
         extras.Add(l =>
         {
             BuildRaft(l, "Raft1", x0 + 38, x0 + 42, top, 0f); BuildRaft(l, "Raft2", x0 + 52, x0 + 55, top, 0.5f); BuildRaft(l, "Raft3", x0 + 64, x0 + 67, top, 0.25f);
         });
         // 3. Метановая галерея: широкий канал, пузыри как трамплины
-        Ledge(70, 81); Water(82, 107); Ledge(108, 125);
-        S(74, 12, 'f'); S(78, 12, 'g'); S(119, 12, 'f'); S(122, 12, 'g');
+        Ledge(70, 81); Water(82, 107); Ledge(108, 128);
+        S(74, 12, 'g'); S(78, 12, 'g'); S(119, 12, 'f'); S(122, 12, 'g');
         extras.Add(l => { for (int i = 0; i < 9; i++) BuildMethaneVent(l, x0 + 85.5f + 2.5f * i, top, i * 0.7f); });
+        // 3b. Вторые плоты: четыре канала, те же щели 1.5 м до плота
+        Water(129, 139); Ledge(140, 142); Water(143, 152); Ledge(153, 155); Water(156, 164); Ledge(165, 167); Water(168, 178); Ledge(179, 181);
+        S(127, 12, 'g'); S(141, 12, 'g'); S(154, 12, 'g'); S(166, 12, 'g'); S(180, 12, 'g');
+        extras.Add(l =>
+        {
+            BuildRaft(l, "Raft4", x0 + 132, x0 + 137, top, 0.1f); BuildRaft(l, "Raft5", x0 + 146, x0 + 150, top, 0.6f);
+            BuildRaft(l, "Raft6", x0 + 159, x0 + 162, top, 0.25f); BuildRaft(l, "Raft7", x0 + 171, x0 + 176, top, 0.8f);
+        });
+        // 3c. Тёмный тоннель: один факел-чекпоинт в начале, метановый провал в середине
+        Ledge(182, 205); Water(206, 221); Ledge(222, 235);
+        S(188, 12, 'f'); S(196, 12, 'g'); S(202, 12, 'g'); S(225, 12, 'g'); S(228, 12, 'g'); S(233, 12, 'g');
+        extras.Add(l => { for (int i = 0; i < 5; i++) BuildMethaneVent(l, x0 + 209.5f + 2.5f * i, top, i * 0.7f); });
         // 4. Развилка: внизу вода (не туда), наверху платформа, к ней тёплый поток
-        Ledge(126, 143); Water(144, 159); B(144, 6, 159, 7, '#');
-        S(130, 12, 'g'); S(136, 12, 'f');
+        Ledge(126 + D3, 143 + D3); Water(144 + D3, 159 + D3); B(144 + D3, 6, 159 + D3, 7, '#');
+        S(130 + D3, 12, 'g'); S(136 + D3, 12, 'g');
         extras.Add(l =>
         {
             var u = new GameObject("Updraft"); u.transform.SetParent(l, false);
             float yTop = H - (y0 + 2); // верх строки 2
-            u.transform.position = new Vector3(x0 + 142.5f, (top + yTop) / 2, 0); u.transform.localScale = new Vector3(3, yTop - top, 4);
+            u.transform.position = new Vector3(x0 + D3 + 142.5f, (top + yTop) / 2, 0); u.transform.localScale = new Vector3(3, yTop - top, 4);
             u.AddComponent<Updraft>();
         });
     }
 
-    // Зона 4. Шахта: x 160..181, строки 30..71. Внизу вода (под входной платформой), вход слева строки 32..33 (продолжение платформы зоны 3).
-    // Подъём: поток D1 (7..9) к уступу A (1..5, строка 20), поток D2 (2..7) через вентилятор (строка 13) к уступу B (8..12, строка 6),
-    // вправо тоннелем (13..20, строки 3..5) с решёткой (16) к ZoneExit в зону 5. Ремень вентилятора висит над уступом A.
+    // Зона 4. Шахта: строки 30..71. Внизу вода (под входной платформой), вход слева строки 32..33 (продолжение платформы зоны 3).
+    // Шахта 1 (x 1..12): поток D1 (7..9) к уступу A (1..5, строка 20), поток D2 (2..7) через вентилятор (строка 13) к уступу B (8..12, строка 6),
+    // вправо тоннелем (13..24, строки 3..5) с решёткой (16), затем падение по колодцу (22..24) на строку 32.
+    // Шахта 2 (P-4): та же шахта со сдвигом +25 (x 26..37): вторая решётка поперёк потока D1 (строка 26: пройти фитильком, держа прыжок),
+    // свой ремень (id fanbelt2), тоннель 38..45 с решёткой (41) к ZoneExit в зону 5. Чекпоинты (свечи): уступ B шахты 1 и старт шахты 2.
     static void Zone4Shaft(int x0, int y0)
     {
         void B(int a, int b, int c, int d, char ch) => Box(x0 + a, y0 + b, x0 + c, y0 + d, ch);
         void S(int a, int b, char ch) => g[y0 + b, x0 + a] = ch;
         void Room(string n, int a, int b, int c, int d, string hex) => rooms.Add((n, x0 + a, y0 + b, x0 + c, y0 + d, hex));
-        B(0, 0, 21, 2, '#'); B(0, 0, 0, 25, '#'); B(21, 0, 21, 41, '#'); B(13, 6, 20, 41, '#'); B(0, 41, 12, 41, '#');
+        const int X2 = 25;
+        B(0, 0, 46, 2, '#'); B(0, 0, 0, 25, '#'); B(13, 6, 21, 41, '#'); B(0, 41, 12, 41, '#');
         B(0, 39, 12, 40, 'P');
-        Room("Шахта", 1, 3, 12, 38, "#1a1d22"); Room("Шахта: тоннель", 13, 3, 20, 5, "#1a1d22");
+        B(X2, 0, X2, 25, '#'); B(22, 32, 24, 41, '#'); B(X2, 41, X2 + 12, 41, '#'); B(X2 + 13, 6, X2 + 20, 41, '#'); B(X2 + 21, 0, X2 + 21, 41, '#');
+        B(X2, 39, X2 + 12, 40, 'P');
+        Room("Шахта", 1, 3, 12, 38, "#1a1d22"); Room("Шахта: тоннель", 13, 3, 24, 5, "#1a1d22"); Room("Шахта: колодец", 22, 6, 24, 31, "#14171c");
+        Room("Шахта 2", X2 + 1, 3, X2 + 12, 38, "#1a1d22"); Room("Шахта 2: тоннель", X2 + 13, 3, X2 + 20, 5, "#1a1d22");
         var start = C(x0 + 3, y0 + 31) + Vector3.up * 0.1f; zoneStarts.Add(start);
         extras.Add(l =>
         {
@@ -224,24 +301,34 @@ public static class OgonokBuilder
                 u.AddComponent<Updraft>();
             });
         }
-        // 1. Тёплые потоки с уступами
-        B(0, 32, 9, 33, '#'); S(2, 31, 'c'); S(5, 31, 'g'); Draft(7, 9, 17, 31);
-        B(1, 20, 5, 21, '#'); S(2, 19, 'c'); S(4, 19, 'p'); B(3, 14, 3, 18, 'j');
-        // 2. Вентилятор: поток вдоль левой стены, лопасти на строке 13
-        Draft(2, 7, 3, 19);
-        extras.Add(l => BuildShaftFan(l, x0 + 7f, H - 1 - (y0 + 13) + 0.5f));
-        B(8, 6, 12, 7, '#'); S(10, 5, 'c');
-        // 3. Решётка: тоннель, фитилёк
+        foreach (var o in new[] { 0, X2 })
+        {
+            bool second = o != 0;
+            // 1. Тёплые потоки с уступами
+            B(o, 32, o + 9, 33, '#'); S(o + 2, 31, second ? 'c' : 'p'); S(o + 5, 31, 'g'); Draft(o + 7, o + 9, 17, 31);
+            B(o + 1, 20, o + 5, 21, '#'); S(o + 2, 19, 'p'); S(o + 4, 19, 'p'); B(o + 3, 14, o + 3, 18, second ? 'J' : 'j');
+            // 2. Вентилятор: поток вдоль левой стены, лопасти на строке 13
+            Draft(o + 2, o + 7, 3, 19);
+            float fx = x0 + o + 7f; string belt = second ? "fanbelt2" : "fanbelt";
+            extras.Add(l => BuildShaftFan(l, fx, H - 1 - (y0 + 13) + 0.5f, belt));
+            B(o + 8, 6, o + 12, 7, '#'); S(o + 10, 5, second ? 'p' : 'c');
+        }
+        B(X2 + 1, 26, X2 + 12, 26, 'v'); // 1b. решётка поперёк шахты 2: только фитильком, держа прыжок в потоке
+        S(X2 + 2, 25, 'p');
+        // 3. Решётки в тоннелях: фитилёк
         S(14, 5, 'p'); B(16, 3, 16, 4, '#'); S(16, 5, 'v');
-        extras.Add(l => BuildExit(l, x0 + 19, y0 + 5, 5));
+        S(X2 + 14, 5, 'p'); B(X2 + 16, 3, X2 + 16, 4, '#'); S(X2 + 16, 5, 'v');
+        extras.Add(l => BuildExit(l, x0 + X2 + 19, y0 + 5, 5));
     }
 
-    // Зона 5. Лес: x 0..199, строки 74..93 (локально 0..19). Потолок строка 0, основание 19. Земля = плиты от строки r до 19, игрок стоит в строке r-1.
-    // Опушка 1..65 (пни = укрытия от ветра fan x=52, кроны без снега), ручей 66..80 (лёд над водой), бурелом 81..151 (брёвна, овраг 120..127 с мостом-стволом на верёвке),
-    // подъём 152..199 (террасы по 1 м через 4 м, без подпитки). Холод ×1.5 на всю зону, снег по всей длине.
-    // Смола-чекпоинты: x 30, 58, 86, 112, 130, 154 (между ними ≤ 28 м; от 154 до костра 72 м без подпитки).
+    // Зона 5. Лес: строки 74..93 (локально 0..19). Потолок строка 0, основание 19. Земля = плиты от строки r до 19, игрок стоит в строке r-1.
+    // Опушка 1..65 (пни = укрытия от ветра fan x=52, кроны без снега), ручей 66..80 (тонкий лёд над водой), бурелом 81..151 (брёвна, овраг 120..127 с мостом-стволом),
+    // P-4 (вставка D5 = 190): ручей 2 154..174 (тонкий лёд), заснеженное поле с ветром 175..236 (лёд 212..222 под порывами), бурелом 2 237..341 (овраг 262..268),
+    // подъём (152..199)+D5: террасы по 1 м через 4 м, без подпитки. Холод ×1.5 на всю зону, снег по всей длине.
+    // Смола-чекпоинты: x 130 и CL+2 (начало подъёма); остальное топливо: бумага.
     static void Zone5Forest(int x0, int y0)
     {
+        const int CL = 152 + D5; // начало подъёма
         void B(int a, int b, int c, int d, char ch) => Box(x0 + a, y0 + b, x0 + c, y0 + d, ch);
         void S(int a, int b, char ch) => g[y0 + b, x0 + a] = ch;
         void Ground(int a, int c, int r)
@@ -256,55 +343,75 @@ public static class OgonokBuilder
             float h = gr - cb - 2;
             extras.Add(l => Cube("TreeTrunk", l, new Vector3(x0 + x + 0.5f, H - (y0 + gr) + h / 2, 1.3f), new Vector3(0.9f, h, 0.9f), mTrunk, false));
         }
-        B(0, 0, 199, 0, '#'); B(0, 19, 199, 19, '#'); B(0, 0, 0, 19, '#');
-        rooms.Add(("Лес", x0 + 1, y0 + 1, x0 + 198, y0 + 18, "#10201c"));
+        void Ravine(int a, int c, int ropeX, string id) // овраг a..c: верёвка слева роняет ствол-мост
+        {
+            B(a, 17, c, 18, '.'); B(a, 18, c, 18, 'P');
+            extras.Add(l =>
+            {
+                for (int r = 10; r <= 14; r++) { var rp = Cube("Rope", l, C(x0 + ropeX, y0 + r), new Vector3(0.2f, 1, 0.2f), mRope, false).AddComponent<Rope>(); rp.trigger = true; rp.id = id; }
+                var br = new GameObject("LogBridge_" + id); br.transform.SetParent(l, false); br.AddComponent<Bridge>().id = id;
+                Cube("LogPlank", br.transform, new Vector3(x0 + (a + c + 1) / 2f, H - (y0 + 17) - 0.5f, 0), new Vector3(c - a + 1, 1, Depth), mTrunk);
+            });
+        }
+        B(0, 0, 199 + D5, 0, '#'); B(0, 19, 199 + D5, 19, '#'); B(0, 0, 0, 19, '#');
+        rooms.Add(("Лес", x0 + 1, y0 + 1, x0 + 198 + D5, y0 + 18, "#10201c"));
         zoneStarts.Add(C(x0 + 3, y0 + 16) + Vector3.up * 0.1f);
 
         // 1. Опушка
         Ground(1, 65, 17);
         foreach (var x in new[] { 12, 19, 26, 33, 41, 47 }) Tree(x, 17, 8);
-        S(16, 16, 'p'); S(24, 16, 'p'); S(38, 16, 'p');
-        S(30, 16, 'r'); S(58, 16, 'r');
+        S(16, 16, 'p'); S(24, 16, 'p'); S(30, 16, 'p'); S(38, 16, 'p'); S(58, 16, 'p');
         extras.Add(l => BuildGale(l, x0 + 52.5f, H - (y0 + 17) + 4.5f, 0.1f, 45f));
 
-        // 2. Ручей: лёд (тает от size >= 0.5) над водой-Pit, два просвета для прыжка
+        // 2. Ручей: тонкий лёд над водой-Pit, два просвета для прыжка. Идти маленьким
         Ground(81, 151, 17);
-        B(66, 17, 80, 17, 'I'); B(66, 18, 80, 18, 'P'); B(71, 17, 72, 17, '.'); B(76, 17, 76, 17, '.');
-        S(86, 16, 'r');
+        B(66, 17, 80, 17, 'i'); B(66, 18, 80, 18, 'P'); B(71, 17, 72, 17, '.'); B(76, 17, 76, 17, '.');
+        S(86, 16, 'p');
 
         // 3. Бурелом: брёвна (1 м), кроны; овраг 120..127: верёвка 118 роняет ствол-мост (id log)
         foreach (var (a, b) in new[] { (90, 91), (94, 96), (104, 105), (109, 110), (133, 135), (139, 140), (145, 146) }) B(a, 16, b, 16, 'n');
         foreach (var x in new[] { 100, 108, 137, 143 }) Tree(x, 17, 8);
-        S(102, 16, 'p'); S(106, 16, 'p'); S(141, 16, 'p');
-        S(112, 16, 'r'); S(130, 16, 'r');
+        S(102, 16, 'p'); S(106, 16, 'p'); S(112, 16, 'p'); S(141, 16, 'p');
+        S(130, 16, 'r');
         B(115, 8, 121, 9, 'o');
-        B(120, 17, 127, 18, '.'); B(120, 18, 127, 18, 'P');
-        extras.Add(l =>
-        {
-            for (int r = 10; r <= 14; r++) { var rp = Cube("Rope", l, C(x0 + 118, y0 + r), new Vector3(0.2f, 1, 0.2f), mRope, false).AddComponent<Rope>(); rp.trigger = true; rp.id = "log"; }
-            var br = new GameObject("LogBridge"); br.transform.SetParent(l, false); br.AddComponent<Bridge>().id = "log";
-            Cube("LogPlank", br.transform, new Vector3(x0 + 124f, H - (y0 + 17) - 0.5f, 0), new Vector3(8, 1, Depth), mTrunk);
-        });
+        Ravine(120, 127, 118, "log");
+
+        // 3b. Ручей 2: тонкий лёд подлиннее, три просвета
+        Ground(152, 153, 17); S(148, 16, 'p'); // бумага только до ручья за 6 м и после него: перед тонким льдом большим не стать
+        B(154, 17, 174, 17, 'i'); B(154, 18, 174, 18, 'P'); B(158, 17, 159, 17, '.'); B(164, 17, 164, 17, '.'); B(169, 17, 170, 17, '.');
+        // 3c. Поле с ветром: пни-укрытия через 8 м, лёд 212..222 под порывами, ветер справа
+        Ground(175, 236, 17);
+        foreach (var x in new[] { 184, 192, 200, 208, 224, 230 }) B(x, 16, x, 16, 'n');
+        foreach (var x in new[] { 188, 196, 204, 228 }) Tree(x, 17, 8);
+        B(212, 17, 222, 17, 'i'); B(212, 18, 222, 18, 'P'); B(217, 17, 217, 17, '.');
+        foreach (var x in new[] { 178, 182, 190, 198, 202, 226, 232 }) S(x, 16, 'p');
+        extras.Add(l => BuildGale(l, x0 + 234.5f, H - (y0 + 17) + 4.5f, 0.1f, 55f));
+        // 3d. Бурелом 2: длиннее, овраг 262..268 с верёвкой 260 (id log2)
+        Ground(237, 261, 17); Ground(269, CL - 1, 17);
+        foreach (var (a, b) in new[] { (240, 241), (244, 246), (252, 253), (257, 258), (272, 274), (278, 279), (283, 285), (290, 291), (298, 300), (306, 307), (312, 314), (322, 323), (330, 332) }) B(a, 16, b, 16, 'n');
+        foreach (var x in new[] { 248, 256, 276, 288, 294, 308, 318, 326, 336 }) Tree(x, 17, 8);
+        foreach (var x in new[] { 242, 250, 254, 259, 275, 281, 293, 296, 303, 310, 316, 320, 328, 334, 338 }) S(x, 16, 'p');
+        Ravine(262, 268, 260, "log2");
 
         // 4. Подъём: 11 террас, ни свечи, ни бумаги. Ветер только на верхней площадке
-        for (int k = 0; k <= 10; k++) Ground(152 + 4 * k, 155 + 4 * k, 17 - k);
-        Ground(196, 199, 7);
-        S(154, 16, 'r');
-        foreach (var k in new[] { 1, 3, 5 }) Tree(154 + 4 * k, 17 - k, 3);
-        foreach (var k in new[] { 7, 9 }) B(154 + 4 * k, 17 - k - 1, 154 + 4 * k, 17 - k - 1, 'n');
-        extras.Add(l => BuildGale(l, x0 + 198.5f, H - (y0 + 7) + 4.5f, 0.1f, 40f));
+        for (int k = 0; k <= 10; k++) Ground(CL + 4 * k, CL + 3 + 4 * k, 17 - k);
+        Ground(CL + 44, CL + 47, 7);
+        S(CL + 2, 16, 'r');
+        foreach (var k in new[] { 1, 3, 5 }) Tree(CL + 2 + 4 * k, 17 - k, 3);
+        foreach (var k in new[] { 7, 9 }) B(CL + 2 + 4 * k, 17 - k - 1, CL + 2 + 4 * k, 17 - k - 1, 'n');
+        extras.Add(l => BuildGale(l, x0 + CL + 46.5f, H - (y0 + 7) + 4.5f, 0.1f, 40f));
 
         // снег по всей зоне (цена 0.03, под кронами нет), холод, общий план в начале, далёкий круг камней
         extras.Add(l =>
         {
-            for (int x = 6; x <= 198; x += 8)
+            for (int x = 6; x <= 198 + D5; x += 8)
             {
                 var sn = new GameObject("Snowfall"); sn.transform.SetParent(l, false); sn.transform.position = C(x0 + x, y0 + 1);
                 var sp = sn.AddComponent<DripSpawner>(); sp.dropPrefab = dropPrefab; sp.phase = x % 5 * 0.07f;
                 sp.interval = 0.5f; sp.cost = 0.03f; sp.halfWidth = 4f; sp.gravity = 3f; sp.maxSpeed = 2.2f; sp.scale = 0.5f; sp.activeRange = 30f;
             }
             var cz = new GameObject("ColdZone"); cz.transform.SetParent(l, false);
-            cz.transform.position = new Vector3(x0 + 100f, H - (y0 + 10), 0); cz.transform.localScale = new Vector3(200, 20, 6); cz.AddComponent<ColdZone>().mult = 1.5f;
+            cz.transform.position = new Vector3(x0 + (200 + D5) / 2f, H - (y0 + 10), 0); cz.transform.localScale = new Vector3(200 + D5, 20, 6); cz.AddComponent<ColdZone>().mult = 1.5f;
             var gt = H - (y0 + 17);
             var zi = new GameObject("ZoneIntro5"); zi.transform.SetParent(l, false);
             zi.transform.position = new Vector3(x0 + 9f, gt + 4f, 0); zi.transform.localScale = new Vector3(14, 10, 6);
@@ -404,10 +511,11 @@ public static class OgonokBuilder
                 switch (c)
                 {
                     case 'I': Cube("Ice", level, p, new Vector3(1, 1, 2), mIce).AddComponent<Ice>(); break;
+                    case 'i': Cube("Ice", level, p, new Vector3(1, 1, 2), mIce).AddComponent<Ice>().thin = true; break;
                     case 'H': var hi = Cube("IceHot", level, p, new Vector3(1, 1, 2), mIce).AddComponent<Ice>(); hi.heatOnly = true; heatIce.Add(hi); break;
                     case 'R': Cube("Curtain", level, p, new Vector3(0.8f, 1, 2), mRope).AddComponent<Rope>(); break;
-                    case 'T': case 'L': case 'j':
-                        var rp = Cube("Rope", level, p, new Vector3(0.2f, 1, 0.2f), mRope, false).AddComponent<Rope>(); rp.trigger = true; rp.id = c == 'T' ? "wardrobe" : c == 'L' ? "hatch" : "fanbelt"; break;
+                    case 'T': case 'L': case 'j': case 'U': case 'V': case 'J':
+                        var rp = Cube("Rope", level, p, new Vector3(0.2f, 1, 0.2f), mRope, false).AddComponent<Rope>(); rp.trigger = true; rp.id = c == 'T' ? "wardrobe" : c == 'L' ? "hatch" : c == 'U' ? "shelf1" : c == 'V' ? "shelf2" : c == 'J' ? "fanbelt2" : "fanbelt"; break;
                     case 'v':
                         var v = Cube("Vent", level, p, new Vector3(1, 1, Depth), mGrate);
                         v.AddComponent<Vent>().col = v.GetComponent<Collider>(); break;
@@ -443,7 +551,7 @@ public static class OgonokBuilder
                         break;
                 }
             }
-        foreach (var (name, a, b, c2, d, hex) in rooms)
+        if (!art) foreach (var (name, a, b, c2, d, hex) in rooms) // с артом тёмный фон комнат не нужен: за уровнем видны задники
         {
             ColorUtility.TryParseHtmlString(hex, out var col);
             Cube("Room_" + name, level, new Vector3((a + c2 + 1) / 2f, H - (b + d + 1) / 2f, Depth / 2 + 0.5f), new Vector3(c2 - a + 1, d - b + 1, 1), Lit("Room" + rooms.FindIndex(r => r.name == name), col), false);
@@ -480,10 +588,10 @@ public static class OgonokBuilder
     }
 
     // Вентилятор: втулка и две лопасти (визуал двигает ShaftFan.LateUpdate). Ремень = верёвка 'j' в сетке.
-    static void BuildShaftFan(Transform level, float x, float y)
+    static void BuildShaftFan(Transform level, float x, float y, string belt = "fanbelt")
     {
         var root = new GameObject("ShaftFan"); root.transform.SetParent(level, false); root.transform.position = new Vector3(x, y, 0);
-        var fan = root.AddComponent<ShaftFan>();
+        var fan = root.AddComponent<ShaftFan>(); fan.beltId = belt;
         Cube("Hub", root.transform, root.transform.position, new Vector3(0.8f, 0.8f, 0.8f), mBlade, false);
         fan.blades = new[] { Cube("Blade0", root.transform, root.transform.position, Vector3.one, mBlade, false).transform, Cube("Blade1", root.transform, root.transform.position, Vector3.one, mBlade, false).transform };
     }
@@ -562,8 +670,8 @@ public static class OgonokBuilder
                 else { Cube("Frame", level, new Vector3(x, floorY + 3f + R() * 3f, 2.0f), new Vector3(1f, 1.4f, 0.2f), m, false); }
             }
         }
-        Range(3, 96, FloorTop(12), 6); Range(101, 137, FloorTop(8), 4);   // дом: этаж и спальня
-        Range(126, 150, FloorTop(28), 8); Range(156, 186, FloorTop(28), 8); Range(190, 218, FloorTop(28), 8); // подвал: спуск, пол, котельная
+        Range(3, 96, FloorTop(12), 6); Range(99, 186, FloorTop(12), 6); Range(101 + D1, 137 + D1, FloorTop(8), 4);   // дом: этаж, новые комнаты, спальня
+        Range(126 + D1, 150 + D1, FloorTop(28), 8); Range(156 + D1, 186 + D1, FloorTop(28), 8); Range(190 + D1, 296 + D1, FloorTop(28), 8); // подвал: спуск, пол, погреб и котельная
     }
 
     // ---------- игрок, камера, пост-обработка ----------
@@ -571,7 +679,8 @@ public static class OgonokBuilder
     {
         var root = new GameObject("Player"); root.transform.position = start;
         var f = root.AddComponent<Flame>(); var fp = root.AddComponent<FlamePlayer>(); fp.flame = f;
-        var vis = Sprite("FlameSprite", root.transform, flameSprite, mSparkAdd, 1f); f.visual = vis.transform;
+        var vis = art ? Sprite("FlameSprite", root.transform, wispSprite, mWisp, 1f) : Sprite("FlameSprite", root.transform, flameSprite, mSparkAdd, 1f); f.visual = vis.transform;
+        if (art) vis.AddComponent<FaceFlip>().player = fp;
         var lt = new GameObject("FlameLight").AddComponent<Light>(); lt.transform.SetParent(root.transform, false);
         lt.type = LightType.Point; lt.color = new Color(1, .6f, .25f); lt.shadows = LightShadows.Soft; lt.shadowStrength = 1f; lt.shadowBias = 0.05f;
         f.flameLight = lt;
@@ -630,6 +739,67 @@ public static class OgonokBuilder
         var ca = Add<ColorAdjustments>(); ca.contrast.Override(12f); ca.saturation.Override(8f);
         EditorUtility.SetDirty(prof);
         var go = new GameObject("PostFX"); var v = go.AddComponent<Volume>(); v.isGlobal = true; v.sharedProfile = prof;
+    }
+
+    // ---------- превью арта команды (P-4): только просмотр, арт не финальный ----------
+    // Файлы скопированы из корневой Assets/ в Unity/Assets/Art/Preview (корневую папку не трогаем).
+    // platform_tileset.jpg не нарезаем: JPEG без альфы, под 2.5D-кубы не ложится. ParallaxLayer.cs не нужен: камера перспективная, параллакс даёт глубина z.
+    static Material mBgFar, mBgMid, mBgGears, mBgChains;
+
+    static Texture2D ImportPreview(string file, bool sprite)
+    {
+        var path = "Assets/Art/Preview/" + file;
+        if (!File.Exists(Path.Combine(Directory.GetCurrentDirectory(), path))) throw new FileNotFoundException("нет файла превью арта: " + path);
+        AssetDatabase.ImportAsset(path);
+        var imp = (TextureImporter)AssetImporter.GetAtPath(path);
+        imp.mipmapEnabled = false; imp.wrapMode = TextureWrapMode.Clamp; imp.maxTextureSize = 1024; imp.alphaIsTransparency = true;
+        if (sprite) { imp.textureType = TextureImporterType.Sprite; imp.spriteImportMode = SpriteImportMode.Single; imp.spritePixelsPerUnit = 1024; }
+        imp.SaveAndReimport();
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+    }
+
+    static Material TexMat(string name, string shader, Texture2D tex, Color tint)
+    {
+        var path = $"Assets/Materials/{name}.mat"; AssetDatabase.DeleteAsset(path);
+        var m = new Material(Shader.Find(shader)) { mainTexture = tex, color = tint };
+        AssetDatabase.CreateAsset(m, path); return m;
+    }
+
+    static void LoadArtPreview()
+    {
+        ImportPreview("ignis_wisp.png", true);
+        wispSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Art/Preview/ignis_wisp.png");
+        mWisp = TexMat("Wisp", "Sprites/Default", wispSprite.texture, Color.white); // у PNG есть альфа: обычный блендинг, а не аддитивный (тёмное тело иначе исчезло бы)
+        // тёмные тинты: задники не перебивают свет огонька
+        mBgFar = TexMat("BgFar", "Sprites/Default", ImportPreview("bg_far_cathedral.jpg", false), new Color(0.30f, 0.30f, 0.36f, 1));
+        mBgMid = TexMat("BgMid", "Mobile/Particles/Additive", ImportPreview("bg_midground_gears.jpg", false), new Color(0.30f, 0.26f, 0.24f, 1)); // JPEG без альфы: чёрное = прозрачное
+        mBgGears = TexMat("BgGears", "Sprites/Default", ImportPreview("bg_layer_gears.png", false), new Color(0.40f, 0.38f, 0.42f, 1));
+        mBgChains = TexMat("BgChains", "Sprites/Default", ImportPreview("bg_layer_chains.png", false), new Color(0.45f, 0.45f, 0.50f, 1));
+    }
+
+    // Квады за уровнем на разной глубине z (камера FOV 40, z=-13): чем дальше, тем крупнее квад и медленнее параллакс. Соседние плитки зеркалятся: шов не виден.
+    static void BuildArtBackdrop()
+    {
+        var root = new GameObject("ArtPreview").transform;
+        void Layer(string n, Material m, float z, float w)
+        {
+            float h = w * 768f / 1376f; int col = 0;
+            for (float x = -w; x < W + w; x += w, col++)
+            {
+                int row = 0;
+                for (float y = -h; y < H + h; y += h, row++)
+                {
+                    var q = GameObject.CreatePrimitive(PrimitiveType.Quad); Object.DestroyImmediate(q.GetComponent<Collider>());
+                    q.name = n; q.transform.SetParent(root, false); q.transform.position = new Vector3(x + w / 2, y + h / 2, z);
+                    q.transform.localScale = new Vector3(col % 2 == 0 ? w : -w, row % 2 == 0 ? h : -h, 1);
+                    q.GetComponent<Renderer>().sharedMaterial = m;
+                }
+            }
+        }
+        Layer("BgFar", mBgFar, 75f, 100f);
+        Layer("BgMid", mBgMid, 45f, 64f);
+        Layer("BgGears", mBgGears, 24f, 36f);
+        Layer("BgChains", mBgChains, 12f, 24f);
     }
 
     // ---------- плейсхолдерные ассеты ----------
@@ -703,6 +873,7 @@ public static class OgonokBuilder
         dropPrefab = PrefabUtility.SaveAsPrefabAsset(drop, "Assets/Prefabs/Drop.prefab");
         Object.DestroyImmediate(drop);
 
+        if (art) LoadArtPreview();
         var bub = Sprite("Bubble", null, dotSprite, mBubble, 0.8f); bub.AddComponent<Methane>();
         bubblePrefab = PrefabUtility.SaveAsPrefabAsset(bub, "Assets/Prefabs/Bubble.prefab");
         Object.DestroyImmediate(bub);

@@ -12,7 +12,7 @@ public static class OgonokShot
 
     public static void Shoot()
     {
-        EditorSceneManager.OpenScene("Assets/Scenes/Level1.unity");
+        EditorSceneManager.OpenScene(Environment.GetEnvironmentVariable("OGONOK_SCENE") ?? "Assets/Scenes/Level1.unity");
         var fp = UnityEngine.Object.FindFirstObjectByType<FlamePlayer>();
         float x = Env("OGONOK_X", 3.5f), y = Env("OGONOK_Y", 1.6f);
         fp.transform.position = new Vector3(x, y, 0);
