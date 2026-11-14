@@ -39,6 +39,7 @@ public class FlamePlayer : MonoBehaviour
         int dir = (right ? 1 : 0) - (left ? 1 : 0);
         if (dir != 0) face = dir;
         giveHeld = k.eKey.isPressed;
+        if (k.qKey.wasPressedThisFrame) flame.ToggleBig();
 
         MoveInput(dt, dir, held, jumpP, dashP, down);
     }
@@ -51,7 +52,7 @@ public class FlamePlayer : MonoBehaviour
         var all = Interactable.All;
         for (int i = all.Count - 1; i >= 0; i--) all[i].Tick(this, flame, dt);
 
-        if (dashP && dashCd <= 0 && flame.size > 0.16f)
+        if (dashP && dashCd <= 0 && flame.fuel > 0.16f)
         {
             flame.Add(-0.15f); dashT = 0.18f; dashCd = 0.5f; Fx.Spark(transform.position, 16, 7);
         }

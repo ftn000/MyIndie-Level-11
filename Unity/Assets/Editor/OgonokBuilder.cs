@@ -9,7 +9,7 @@ using UnityEngine.Rendering.Universal;
 // зоны 3–6 дописываются новыми методами. Меню: Ogonok/Build Level 1. Batchmode: -executeMethod OgonokBuilder.Build
 //
 // Сетка: ty растёт вниз, мир: y центра строки r = H-1-r+0.5. Дом сверху (строки 0..13), подвал под ним и правее (14..29).
-// Символы: # камень, m мебель/ящик, I лёд, i тонкий лёд (рушится сразу, если size >= 0.5 или рывок), H лёд только от котла, R занавеска, T верёвка-мост (id wardrobe), L верёвка щеколды (id hatch),
+// Символы: # камень, m мебель/ящик, I лёд, i тонкий лёд (рушится сразу, если форма не маленькая или рывок), H лёд только от котла, R занавеска, T верёвка-мост (id wardrobe), L верёвка щеколды (id hatch),
 // b плита моста, h плита люка, P провал (смерть), w паутина (вертикальная колонна = одна паутина), v решётка, p бумага, ~ лужа,
 // d капля, e капля, которую гасит котёл, c свеча, k керосинка, f газовый факел, g мусорный пакет (бумага), j верёвка-ремень вентилятора (id fanbelt), G выход из зоны (ZoneExit в зону 3).
 // Зоны 5–6 (P-3): n пень/бревно (коллайдер, укрытие от ветра), o крона (коллайдер, под ней снега нет), r смола (чекпоинт).
@@ -237,7 +237,7 @@ public static class OgonokBuilder
         S(47, 12, 'g'); S(59, 12, 'g');
         extras.Add(l =>
         {
-            BuildRaft(l, "Raft1", x0 + 38, x0 + 42, top, 0f); BuildRaft(l, "Raft2", x0 + 52, x0 + 55, top, 0.5f); BuildRaft(l, "Raft3", x0 + 64, x0 + 67, top, 0.25f);
+            BuildRaftStream(l, "RaftStream1", x0 + 35, x0 + 46, top, 1, 0f); BuildRaftStream(l, "RaftStream2", x0 + 49, x0 + 58, top, 1, 0.4f); BuildRaftStream(l, "RaftStream3", x0 + 61, x0 + 70, top, 1, 0.7f);
         });
         // 3. Метановая галерея: широкий канал, пузыри как трамплины
         Ledge(70, 81); Water(82, 107); Ledge(108, 128);
@@ -248,8 +248,8 @@ public static class OgonokBuilder
         S(127, 12, 'g'); S(141, 12, 'g'); S(154, 12, 'g'); S(166, 12, 'g'); S(180, 12, 'g');
         extras.Add(l =>
         {
-            BuildRaft(l, "Raft4", x0 + 132, x0 + 137, top, 0.1f); BuildRaft(l, "Raft5", x0 + 146, x0 + 150, top, 0.6f);
-            BuildRaft(l, "Raft6", x0 + 159, x0 + 162, top, 0.25f); BuildRaft(l, "Raft7", x0 + 171, x0 + 176, top, 0.8f);
+            BuildRaftStream(l, "RaftStream4", x0 + 129, x0 + 140, top, -1, 0.1f); BuildRaftStream(l, "RaftStream5", x0 + 143, x0 + 153, top, -1, 0.55f);
+            BuildRaftStream(l, "RaftStream6", x0 + 156, x0 + 165, top, -1, 0.3f); BuildRaftStream(l, "RaftStream7", x0 + 168, x0 + 179, top, -1, 0.8f);
         });
         // 3c. Тёмный тоннель: один факел-чекпоинт в начале, метановый провал в середине
         Ledge(182, 205); Water(206, 221); Ledge(222, 235);
@@ -574,11 +574,14 @@ public static class OgonokBuilder
         var cd = root.AddComponent<Candle>(); cd.lightSrc = lt; cd.flameVis = fl;
     }
 
-    // Плот: верх вровень с уступами (top), центр ходит между xa и xb. Вода под ним (Pit) гасит, пока игрок не на плоту.
-    static void BuildRaft(Transform level, string n, float xa, float xb, float top, float phase)
+    // Исток канала течения (P-5): труба у истока, решётка стока, RaftStream спавнит плоты. dir +1: течение вправо.
+    static void BuildRaftStream(Transform level, string n, float xa, float xb, float top, int dir, float phase)
     {
-        var r = Cube(n, level, new Vector3(xa, top - 0.2f, 0), new Vector3(3f, 0.4f, 3f), mRaft);
-        var raft = r.AddComponent<Raft>(); raft.a = xa; raft.b = xb; raft.phase = phase;
+        var root = new GameObject(n); root.transform.SetParent(level, false); root.transform.position = new Vector3((xa + xb) / 2, top, 0);
+        var s = root.AddComponent<RaftStream>(); s.xa = xa; s.xb = xb; s.top = top; s.dir = dir; s.phase = phase; s.raftMat = mRaft;
+        float up = dir > 0 ? xa : xb, down = dir > 0 ? xb : xa;
+        Cube("StreamPipe", root.transform, new Vector3(up + dir * 0.5f, top + 0.5f, 1.9f), new Vector3(1.1f, 0.9f, 0.5f), mPipe, false);
+        Cube("StreamDrain", root.transform, new Vector3(down - dir * 0.5f, top - 0.3f, 1.9f), new Vector3(1.2f, 0.7f, 0.4f), mGrate, false);
     }
 
     static void BuildMethaneVent(Transform level, float x, float top, float phase)
