@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
@@ -31,8 +32,8 @@ public class LevelTests
     static T[] All<T>() where T : Object => Object.FindObjectsByType<T>(FindObjectsSortMode.None);
     static Fan Window(string n) => GameObject.Find(n).GetComponent<Fan>();
     // капли в котельной (подвал-спуск и слив капают всегда, их не считаем)
-    static int DropsAround(Boiler b) => All<Drop>().Count(d => d.transform.position.x > b.transform.position.x - 30f && d.transform.position.x < b.transform.position.x + 8f);
-    static Pit HousePit() => All<Pit>().Single(t => t.transform.position.x < 140f && t.transform.position.y > 70f); // провал спальни
+    static int DropsAround(Boiler b) => All<Drop>().Count(d => d.transform.position.x > b.transform.position.x - 15f && d.transform.position.x < b.transform.position.x + 8f);
+    static Pit HousePit() => All<Pit>().Single(t => t.transform.position.y > 80f); // провал спальни (единственный в доме)
     static Rope RopeId(string id) => All<Rope>().Where(r => r.trigger && r.id == id).OrderBy(r => r.transform.position.y).First();
     // Зоны делят сетку по y: дом 80..93, подвал 64..79, шахта 22..63, канализация 22..37, лес и поляна 0..19.
     static bool InHouse(Component c) => c.transform.position.y > 80f;
@@ -70,7 +71,7 @@ public class LevelTests
 
     [UnityTest] public IEnumerator VentNeedsWickMode()
     {
-        var v = All<Vent>().Single(v => v.transform.position.x > 200f).transform.position;
+        var v = All<Vent>().Single(v => v.transform.position.y > 60f && v.transform.position.y < 75f).transform.position; // решётка слива подвала
         Tp(v.x - 2.5f, v.y, 1f);
         yield return Run(60, Right);
         Assert.Less(p.transform.position.x, v.x - 0.5f, "на большом пламени решётка не пускает");
@@ -105,7 +106,7 @@ public class LevelTests
     // Тёплые потоки живут в зоне 4: проверяем механику на фикстуре с геометрией старой пропасти, смещённой вправо за уровень.
     [UnityTest] public IEnumerator PitCrossedWithUpdrafts()
     {
-        const float X = 200f;
+        const float X = 500f; // за пределами уровня (W=442)
         void Slab(float a, float b, float y0, float y1) { var c = GameObject.CreatePrimitive(PrimitiveType.Cube); c.transform.position = new Vector3(X + (a + b) / 2, (y0 + y1) / 2, 0); c.transform.localScale = new Vector3(b - a, y1 - y0, 4); }
         void Draft(float cx, float w) { var u = new GameObject("Updraft"); u.transform.position = new Vector3(X + cx, 8, 0); u.transform.localScale = new Vector3(w, 16, 4); u.AddComponent<Updraft>(); }
         Slab(80, 93, 0, 1); Slab(111, 125, 0, 1); Slab(80, 125, 16, 17); Slab(98, 100, 4, 5); Slab(106, 108, 5, 6); Slab(109, 111, 2, 3);
@@ -211,7 +212,7 @@ public class LevelTests
 
     [UnityTest] public IEnumerator CobwebBurnsAndCostsFlame()
     {
-        var web = All<Cobweb>().Single(); var wp = web.transform.position;
+        var web = All<Cobweb>().Where(InHouse).OrderByDescending(c => c.transform.position.x).First(); var wp = web.transform.position; // паутина спальни: крайняя справа
         Tp(wp.x - 1.5f, wp.y - 1.9f, 1f); float s0 = p.flame.size;
         yield return Run(200, Right, () => p.transform.position.x > wp.x + 1f);
         Assert.Greater(p.transform.position.x, wp.x + 1f, "проход открыт");
@@ -314,33 +315,34 @@ public class LevelTests
         Assert.Less(Vector3.Distance(p.transform.position, gm.zoneStart[0]), 0.1f);
     }
 
-    // Проходимость по топливу: между подзарядками (старт зоны, свечи, керосинка) хватает пламени при реальной средней скорости 3 м/с
-    // (с запасом на прыжки и ожидание) и среднем размере 0.5 (расход 0.012+0.04·s). Подзарядка свечи +0.5, старт 0.8.
+    // Проходимость по топливу: между подзарядками (старт зоны, свечи, бумага, мешки) хватает пламени при реальной средней скорости 3 м/с
+    // (с запасом на прыжки и ожидание) и среднем размере 0.5 (расход 0.012+0.04·s). Свеча +0.5, бумага/мешок +0.3, старт 0.8.
+    // Подзарядки в пути идут по порядку key; шахта (зона 4) считается как два подъёма и падение по колодцу.
     [UnityTest] public IEnumerator FuelLastsBetweenRefuels()
     {
         const float AvgSpeed = 3f, Avg = 0.5f, Floor = 0.1f;
         float rate = 0.012f + 0.04f * Avg;
         Vector3 Exit(int target) => All<ZoneExit>().Single(e => e.target == target).transform.position;
-        // (зона, где лежат свечи, конец зоны, ключ порядка вдоль пути: шахта идёт вверх)
-        var zones = new (Func<Vector3, bool> inZone, Vector3 start, Vector3 end, Func<Vector3, float> key)[]
+        IEnumerable<(Vector3 pos, float gain)> Items(Func<Vector3, bool> inZone) =>
+            All<Candle>().Select(c => (pos: c.transform.position, gain: 0.5f)).Concat(All<Paper>().Select(c => (pos: c.transform.position, gain: 0.3f))).Where(t => inZone(t.pos));
+        void Check(string zone, Vector3 start, Vector3 end, IEnumerable<(Vector3 pos, float gain)> items, Func<Vector3, float> key)
         {
-            (v => v.y > 75f, gm.zoneStart[0], All<Hatch>().Single().transform.position, v => v.x), // зона 1 кончается люком
-            (v => v.y > 60f && v.y < 75f, gm.zoneStart[1], Exit(3), v => v.x),
-            (v => v.y > 20f && v.y < 30f, gm.zoneStart[2], gm.zoneStart[3], v => v.x),
-            (v => v.y > 30f && v.y < 65f, gm.zoneStart[3], Exit(5), v => v.y),
-        };
-        for (int z = 0; z < zones.Length; z++)
-        {
-            var (inZone, start, end, key) = zones[z];
-            var stops = new[] { start }.Concat(All<Candle>().Select(c => c.transform.position).Where(inZone)).Append(end).OrderBy(key).ToArray();
+            var stops = new[] { (pos: start, gain: 0f) }.Concat(items.OrderBy(t => key(t.pos))).Append((pos: end, gain: 0f)).ToArray();
             float fuel = 0.8f;
             for (int i = 1; i < stops.Length; i++)
             {
-                fuel -= (Mathf.Abs(stops[i].x - stops[i - 1].x) + Mathf.Abs(stops[i].y - stops[i - 1].y)) / AvgSpeed * rate; // путь по Манхэттену
-                Assert.Greater(fuel, Floor, $"зона {z + 1}: топлива не хватит до ({stops[i].x:0}, {stops[i].y:0})");
-                if (i < stops.Length - 1) fuel = Mathf.Min(1f, fuel + 0.5f);
+                fuel -= (Mathf.Abs(stops[i].pos.x - stops[i - 1].pos.x) + Mathf.Abs(stops[i].pos.y - stops[i - 1].pos.y)) / AvgSpeed * rate; // путь по Манхэттену
+                Assert.Greater(fuel, Floor, $"{zone}: топлива не хватит до ({stops[i].pos.x:0}, {stops[i].pos.y:0})");
+                if (i < stops.Length - 1) fuel = Mathf.Min(1f, fuel + stops[i].gain);
             }
         }
+        float x4 = gm.zoneStart[3].x - 3.5f;
+        Check("зона 1", gm.zoneStart[0], All<Hatch>().Single().transform.position, Items(v => v.y > 80f), v => v.x); // зона 1 кончается люком
+        Check("зона 2", gm.zoneStart[1], Exit(3), Items(v => v.y > 60f && v.y < 75f), v => v.x);
+        Check("зона 3", gm.zoneStart[2], gm.zoneStart[3], Items(v => v.y > 20f && v.y < 30f), v => v.x);
+        var shaft = Items(v => v.y > 30f && v.y < 65f).ToArray();
+        Check("зона 4, шахта 1", gm.zoneStart[3], new Vector3(x4 + 23.5f, gm.zoneStart[3].y, 0), shaft.Where(t => t.pos.x < x4 + 22), v => v.y); // конец: низ колодца
+        Check("зона 4, шахта 2", new Vector3(x4 + 23.5f, gm.zoneStart[3].y, 0), Exit(5), shaft.Where(t => t.pos.x > x4 + 22), v => v.y);
         yield return null;
     }
 
@@ -386,7 +388,7 @@ public class LevelTests
         // Любой канал воды без плота и метана уже максимального прыжка (4 тайла при размере 0.4, воздух ~4.7 м). Тупик развилки (x >= 140) не в счёт.
         var rafts = All<Raft>().Select(r => r.transform.position.x).ToArray();
         var vents = All<MethaneVent>().Select(v => v.transform.position.x).ToArray();
-        foreach (var pit in All<Pit>().Where(t => t.transform.position.y > 21f && t.transform.position.y < 30f && t.transform.position.x < 140f))
+        foreach (var pit in All<Pit>().Where(t => t.transform.position.y > 21f && t.transform.position.y < 30f && t.transform.position.x < 250f))
         {
             float l = pit.transform.position.x - pit.transform.localScale.x / 2, r = pit.transform.position.x + pit.transform.localScale.x / 2;
             bool helped = rafts.Concat(vents).Any(x => x > l && x < r) || rafts.Any(x => x > l - 4 && x < r + 4);
@@ -432,7 +434,7 @@ public class LevelTests
 
     [UnityTest] public IEnumerator ShaftFanKillsUntilBeltBurns()
     {
-        var fan = All<ShaftFan>().Single(); var c = fan.transform.position;
+        var fan = All<ShaftFan>().OrderBy(f => f.transform.position.x).First(); var c = fan.transform.position;
         fan.angle = 0f; // лопасть вдоль x
         Tp(c.x + 3f, c.y, 1f); Physics.SyncTransforms();
         p.MoveInput(Dt, 0, false, false, false, false);
@@ -476,21 +478,22 @@ public class LevelTests
 
     [UnityTest] public IEnumerator BotCrossesRaftChannels()
     {
-        var chans = All<Pit>().Where(t => Mathf.Abs(t.transform.position.y - 24.5f) < 0.1f && t.transform.position.x > 30f && t.transform.position.x < 75f)
+        var chans = All<Pit>().Where(t => Mathf.Abs(t.transform.position.y - 24.5f) < 0.1f && All<Raft>().Any(r => Mathf.Abs(r.transform.position.x - t.transform.position.x) < t.transform.localScale.x / 2))
             .OrderBy(t => t.transform.position.x).ToArray();
-        Assert.AreEqual(3, chans.Length, "три канала с плотами");
+        Assert.AreEqual(7, chans.Length, "семь каналов с плотами");
         foreach (var pit in chans)
         {
             float l = pit.transform.position.x - pit.transform.localScale.x / 2, r = pit.transform.position.x + pit.transform.localScale.x / 2;
             var raft = All<Raft>().Single(x => x.transform.position.x > l && x.transform.position.x < r);
-            var rt = new System.Text.StringBuilder(); int rf = 0;
+            var rt = new System.Text.StringBuilder(); int rf = 0; float prevRx = raft.transform.position.x;
             p.flame.Revive(0.8f); Tp(l - 0.4f, 25.4f, 0.8f); yield return null;
             yield return Run(1500, _ =>
             {
                 var pos = p.transform.position; float rx = raft.transform.position.x; if (rf++ % 10 == 0) rt.Append($"[{rf} x={pos.x:0.0} y={pos.y:0.0} rx={rx:0.0} g={p.Grounded}] ");
+                float drx = rx - prevRx; prevRx = rx;
                 bool onRaft = p.Grounded && Mathf.Abs(pos.x - rx) < 1.9f && Mathf.Abs(pos.y - p.H - raft.Top) < 0.2f;
                 if (!p.Grounded) return (1, true, false, false, false); // в полёте держим вправо
-                bool go = onRaft ? r - (rx + 1.5f) < 2.6f : pos.x < l + 0.2f && rx - 1.5f - l < 2.6f; // прыжок, когда плот подплыл на 2.6 м (щель 1.5..2.5 м)
+                bool go = onRaft ? r - (rx + 1.5f) < 2.6f && drx > 0 : pos.x < l + 0.2f && rx - 1.5f - l < 2.6f && drx < 0; // плот плывёт навстречу // прыжок, когда плот подплыл на 2.6 м (щель 1.5..2.5 м)
                 return (go ? 1 : 0, true, go, false, false);
             }, () => p.transform.position.x > r + 0.3f && p.Grounded);
             Assert.IsFalse(p.flame.Dead, $"упал в воду канала x {l:0}..{r:0} " + rt);
@@ -500,28 +503,35 @@ public class LevelTests
 
     [UnityTest] public IEnumerator BotCrossesMethaneGallery()
     {
-        var pit = All<Pit>().Where(t => t.transform.position.y < 30f && t.transform.position.x < 140f && t.transform.localScale.x > 20f).OrderBy(t => t.transform.position.y).Last(); // широкий канал галереи
-        float l = pit.transform.position.x - pit.transform.localScale.x / 2, r = pit.transform.position.x + pit.transform.localScale.x / 2;
-        var trace = new System.Text.StringBuilder(); int fr = 0;
-        Tp(l - 0.5f, 25.4f, 0.5f);
-        yield return Run(240, Idle); p.flame.size = 0.5f; // пузыри уже всплывают (жерла стартуют вместе с игрой)
-        yield return null;
-        yield return Run(2400, _ =>
+        // два метановых канала: галерея (26 м) и провал тёмного тоннеля (16 м); плотов в них нет
+        var vents = All<MethaneVent>().Select(v => v.transform.position.x).ToArray();
+        var pits = All<Pit>().Where(t => Mathf.Abs(t.transform.position.y - 24.5f) < 0.1f && t.transform.position.x < 250f)
+            .Where(t => vents.Any(v => Mathf.Abs(v - t.transform.position.x) < t.transform.localScale.x / 2)).OrderBy(t => t.transform.position.x).ToArray();
+        Assert.AreEqual(2, pits.Length, "два метановых канала");
+        foreach (var pit in pits)
         {
-            var pos = p.transform.position;
-            var b = All<Methane>().Where(m => m.transform.position.x > pos.x - 0.6f && m.transform.position.x < pos.x + 6f && Mathf.Abs(m.transform.position.y - pos.y) < 4f)
-                .OrderBy(m => Mathf.Abs(m.transform.position.x - pos.x)).FirstOrDefault();
-            int dir = b == null ? 1 : Mathf.Abs(b.transform.position.x - pos.x) < 0.25f ? 0 : b.transform.position.x > pos.x ? 1 : -1;
-            if (fr++ % 10 == 0) trace.Append($"[{fr} x={pos.x:0.0} y={pos.y:0.0} s={p.flame.size:0.00} vy={p.Velocity.y:0} b={(b == null ? "-" : b.transform.position.x.ToString("0.0") + "," + b.transform.position.y.ToString("0.0"))}] ");
-            return (dir, true, p.Grounded, false, false);
-        }, () => p.transform.position.x > r + 0.3f && p.Grounded);
-        Assert.IsFalse(p.flame.Dead, "упал в воду галереи " + trace);
-        Assert.Greater(p.transform.position.x, r, "перелетел канал по пузырям");
+            float l = pit.transform.position.x - pit.transform.localScale.x / 2, r = pit.transform.position.x + pit.transform.localScale.x / 2;
+            var trace = new System.Text.StringBuilder(); int fr = 0;
+            p.flame.Revive(0.5f); Tp(l - 0.5f, 25.4f, 0.5f);
+            yield return Run(240, Idle); p.flame.size = 0.5f; // пузыри уже всплывают (жерла стартуют вместе с игрой)
+            yield return null;
+            yield return Run(2400, _ =>
+            {
+                var pos = p.transform.position;
+                var b = All<Methane>().Where(m => m.transform.position.x > pos.x - 0.6f && m.transform.position.x < pos.x + 6f && Mathf.Abs(m.transform.position.y - pos.y) < 4f)
+                    .OrderBy(m => Mathf.Abs(m.transform.position.x - pos.x)).FirstOrDefault();
+                int dir = b == null ? 1 : Mathf.Abs(b.transform.position.x - pos.x) < 0.25f ? 0 : b.transform.position.x > pos.x ? 1 : -1;
+                if (fr++ % 10 == 0) trace.Append($"[{fr} x={pos.x:0.0} y={pos.y:0.0} s={p.flame.size:0.00} vy={p.Velocity.y:0} b={(b == null ? "-" : b.transform.position.x.ToString("0.0") + "," + b.transform.position.y.ToString("0.0"))}] ");
+                return (dir, true, p.Grounded, false, false);
+            }, () => p.transform.position.x > r + 0.3f && p.Grounded);
+            Assert.IsFalse(p.flame.Dead, $"упал в воду канала x {l:0}..{r:0} " + trace);
+            Assert.Greater(p.transform.position.x, r, $"перелетел канал x {l:0}..{r:0} по пузырям");
+        }
     }
 
     [UnityTest] public IEnumerator BotRidesForkUpdraftToPlatform()
     {
-        var u = All<Updraft>().Single(d => d.transform.position.y < 40f && d.transform.position.x < 150f); var c = u.transform.position;
+        var u = All<Updraft>().Single(d => d.transform.position.y < 40f && d.transform.position.x < 260f); var c = u.transform.position;
         Tp(c.x, 25.4f, 0.8f); yield return null;
         yield return Run(400, _ => (p.transform.position.y > 33.5f ? 1 : 0, p.transform.position.y < 34.5f, false, false, false), () => p.transform.position.x > c.x + 3f && p.Grounded);
         Assert.IsFalse(p.flame.Dead);
@@ -529,33 +539,66 @@ public class LevelTests
         Assert.Greater(p.transform.position.y, 30f, "платформа выше дна");
     }
 
-    [UnityTest] public IEnumerator BotClimbsShaftBurningBeltThroughGrate()
+    // Подъём по шахте со сдвигом o (0 = шахта 1, 25 = шахта 2): потоки, ремень, вентилятор, уступ B. С grate: сначала фитилёк под решёткой на строке 26.
+    float ShaftX0() => gm.zoneStart[3].x - 3.5f;
+    IEnumerator ClimbShaft(float o, ShaftFan fan, bool grate)
     {
-        var fan = All<ShaftFan>().Single(); float cx = fan.transform.position.x;
-        // 1. поток D1 от входной платформы к уступу A (слева)
-        gm.JumpToZone(4); yield return null;
+        float x0 = ShaftX0() + o, cx = fan.transform.position.x;
+        // 1. поток D1 от входной платформы к уступу A (слева); с решёткой держим ↓ и прыжок, пока не пройдём её
         var start = p.transform.position;
-        yield return Run(500, _ => (p.transform.position.y > 45.6f ? -1 : p.transform.position.x < 168.3f ? 1 : 0, p.transform.position.y < 46f, false, false, false), () => p.transform.position.y > 43f && p.Grounded);
+        yield return Run(700, _ => { var q = p.transform.position; bool wick = grate && q.y < 39.5f;
+            return (q.y > 45.6f ? -1 : q.x < x0 + 8.3f ? 1 : 0, q.y < 46f, false, false, wick); }, () => p.transform.position.y > 43f && p.Grounded);
         Assert.IsFalse(p.flame.Dead, "D1");
         Assert.Greater(p.transform.position.y, start.y + 10f, "поднялся на уступ A");
         Assert.Less(p.transform.position.x, cx - 0.5f);
         // 2. ремень сгорает от касания, лопасти встают
-        yield return Run(200, Idle, () => fan.Stopped);
-        Assert.IsTrue(fan.Stopped, "ремень над уступом A достаётся с уступа");
+        var tr2 = new System.Text.StringBuilder(); int f2 = 0;
+        yield return Run(300, _ => { bool fed = grate && p.flame.size > 0.2f; if (f2++ % 10 == 0) tr2.Append($"[{f2} x={p.transform.position.x:0.0} y={p.transform.position.y:0.0} s={p.flame.size:0.00} g={p.Grounded}] "); float px = p.transform.position.x, tx = fed ? x0 + 3.5f : x0 + 4.5f; int dir = !grate ? 0 : Mathf.Abs(tx - px) < 0.15f ? 0 : tx > px ? 1 : -1; return (dir, fed, fed, false, false); }, () => fan.Stopped); // после решётки огонёк мал: сперва бумага (иначе size 0.12 ремень не зажжёт), потом прыжки к ремню
+        Assert.IsTrue(fan.Stopped, $"ремень над уступом A достаётся с уступа: p={p.transform.position} s={p.flame.size} belts={All<Rope>().Count(r => r.id == fan.beltId)} papers={All<Paper>().Count(pp => Vector3.Distance(pp.transform.position, p.transform.position) < 8f)} " + tr2);
         // 3. поток D2 мимо стоящего вентилятора на уступ B
         var tr3 = new System.Text.StringBuilder(); int f3 = 0;
-        yield return Run(600, _ => { var q = p.transform.position; if (f3++ % 15 == 0) tr3.Append($"[{f3} x={q.x:0.0} y={q.y:0.0} s={p.flame.size:0.00} up={p.inUpdraft}] "); return (q.y < 52f ? (q.x < 163.5f ? 1 : 0) : q.y > 59.8f ? 1 : (q.x < 166.6f ? 1 : 0), q.y < 60.6f, false, false, false); }, () => p.transform.position.y > 57f && p.Grounded && p.transform.position.x > cx + 1f);
+        yield return Run(600, _ => { var q = p.transform.position; if (f3++ % 15 == 0) tr3.Append($"[{f3} x={q.x:0.0} y={q.y:0.0} s={p.flame.size:0.00} up={p.inUpdraft}] "); return (q.y < 52f ? (q.x < x0 + 3.5f ? 1 : 0) : q.y > 59.8f ? 1 : (q.x < x0 + 6.6f ? 1 : 0), q.y < 60.6f, false, false, false); }, () => p.transform.position.y > 57f && p.Grounded && p.transform.position.x > cx + 1f);
         Assert.IsFalse(p.flame.Dead, "D2/вентилятор");
         Assert.Greater(p.transform.position.x, cx + 1f, "на уступе B " + tr3);
-        // 4. тоннель с решёткой фитильком до выхода из шахты
+    }
+
+    [UnityTest] public IEnumerator BotClimbsShaftBurningBeltThroughGrate()
+    {
+        var fan = All<ShaftFan>().OrderBy(f => f.transform.position.x).First();
+        gm.JumpToZone(4); yield return null;
+        yield return ClimbShaft(0, fan, false);
+        // 4. тоннель с решёткой фитильком, колодец: падаем на строку 32
+        var tr4 = new System.Text.StringBuilder(); int f4 = 0; float x0 = ShaftX0(); float floorY = gm.zoneStart[3].y;
+        yield return Run(900, _ => { var q = p.transform.position; if (f4++ % 8 == 0) tr4.Append($"[{f4} x={q.x:0.0} y={q.y:0.00} s={p.flame.size:0.00} g={p.Grounded}] "); return (1, false, false, false, true); }, () => p.transform.position.x > x0 + 21.5f && p.transform.position.y < floorY + 1f && p.Grounded);
+        Assert.IsFalse(p.flame.Dead, "тоннель и колодец " + tr4);
+        Assert.Less(p.transform.position.y, floorY + 1f, "упал по колодцу на вход шахты 2 " + tr4);
+    }
+
+    [UnityTest] public IEnumerator BotClimbsShaft2ThroughGrateInDraftToForest()
+    {
+        var fan = All<ShaftFan>().OrderBy(f => f.transform.position.x).Last();
+        Assert.AreEqual("fanbelt2", fan.beltId);
+        gm.JumpToZone(4); yield return null;
+        Tp(ShaftX0() + 25 + 3.5f, gm.zoneStart[3].y, 0.8f); yield return null;
+        yield return ClimbShaft(25, fan, true);
         var tr4 = new System.Text.StringBuilder(); int f4 = 0;
         yield return Run(900, _ => { var q = p.transform.position; if (f4++ % 8 == 0) tr4.Append($"[{f4} x={q.x:0.0} y={q.y:0.00} s={p.flame.size:0.00} g={p.Grounded}] "); return (1, false, false, false, true); }, () => Vector3.Distance(p.transform.position, gm.zoneStart[4]) < 0.5f);
-        Assert.Less(Vector3.Distance(p.transform.position, gm.zoneStart[4]), 0.5f, $"прошёл решётку и ZoneExit в лес: p={p.transform.position} s={p.flame.size} dead={p.flame.Dead} grounded={p.Grounded} " + tr4);
+        Assert.Less(Vector3.Distance(p.transform.position, gm.zoneStart[4]), 0.5f, $"прошёл решётку и ZoneExit в лес: p={p.transform.position} s={p.flame.size} dead={p.flame.Dead} " + tr4);
+    }
+
+    [UnityTest] public IEnumerator Shaft2GrateBlocksBigFlameInDraft()
+    {
+        gm.JumpToZone(4); yield return null;
+        float x0 = ShaftX0() + 25;
+        Tp(x0 + 8.3f, gm.zoneStart[3].y, 0.8f);
+        yield return Run(120, _ => (0, true, false, false, false)); // большой поднимается и упирается в решётку
+        Assert.Less(p.transform.position.y, 37f, "решётка поперёк потока держит большое пламя");
+        Assert.IsFalse(p.flame.Dead);
     }
 
     [UnityTest] public IEnumerator FanHasTimingWindowAlongWall()
     {
-        var fan = All<ShaftFan>().Single(); var c = fan.transform.position;
+        var fan = All<ShaftFan>().OrderBy(f => f.transform.position.x).First(); var c = fan.transform.position;
         int free = 0; const int N = 360;
         for (int i = 0; i < N; i++) { fan.angle = i * Mathf.PI * 2 / N; if (!fan.Hits(new Vector3(c.x - 4.5f, c.y, 0), 0.36f)) free++; }
         Assert.Greater(free / (float)N, 0.35f, "между лопастями у стены есть окно по времени");
@@ -620,7 +663,7 @@ public class LevelTests
 
     [UnityTest] public IEnumerator ThinIceHoldsSmallFlameAndDropsBig()
     {
-        var ice = All<Ice>().Where(InForest).OrderBy(i => i.transform.position.x).ToArray();
+        var ice = All<Ice>().Where(InForest).Where(i => i.transform.position.x < 100f).OrderBy(i => i.transform.position.x).ToArray(); // ручей 1
         Assert.Greater(ice.Length, 5);
         var xs = ice.Select(i => i.transform.position.x).ToArray();
         float first = xs[0], last = xs[xs.Length - 1], y = ice[0].transform.position.y + 1.1f;
@@ -632,9 +675,9 @@ public class LevelTests
             float x = p.transform.position.x;
             bool j = p.Grounded && gaps.Any(e => x > e - 0.9f && x < e - 0.4f);
             return (1, true, j, false, false);
-        }, () => p.transform.position.x > last + 1.5f && p.Grounded);
+        }, () => p.transform.position.x > last + 1.0f && p.Grounded); // пень сразу за льдом поля (224) бот не перепрыгивает
         Assert.IsFalse(p.flame.Dead, "маленькое прошло по льду");
-        Assert.Greater(p.transform.position.x, last + 1.5f);
+        Assert.Greater(p.transform.position.x, last + 1.0f);
         // большое пламя: лёд тает, падает в воду
         Tp(first - 3f, y, 1f);
         yield return Run(300, Right);
@@ -707,7 +750,7 @@ public class LevelTests
         Assert.AreEqual(0f, gm.fade, 0.001f);
     }
 
-    // Топливо в лесу: холод ×mult и снег (поток снежинок на метр ширины × 1 м хитбокса × цена) поверх расхода, подзарядки смолой +0.5.
+    // Топливо в лесу: холод ×mult и снег (поток снежинок на метр ширины × 1 м хитбокса × цена) поверх расхода. Подпитки: смола +0.5, бумага +0.3.
     // Обычные отрезки при среднем размере 0.4, последний (подъём + поляна, 70+ м без подпитки) при «экономной» игре, средний размер 0.25 (↓).
     [UnityTest] public IEnumerator FuelLastsThroughForest()
     {
@@ -716,18 +759,20 @@ public class LevelTests
         float snow = sp.cost / sp.interval / (2 * sp.halfWidth);
         var cz = All<ColdZone>().Single(); float zoneEnd = new Bounds(cz.transform.position, cz.transform.localScale).max.x;
         float Rate(float avg, bool forest) => forest ? (0.012f + 0.04f * avg) * cz.mult + snow : 0.012f + 0.04f * avg;
-        var stops = new[] { gm.zoneStart[4].x }
-            .Concat(All<Candle>().Where(InForest).Select(c => c.transform.position.x)).Append(Object.FindFirstObjectByType<Bonfire>().transform.position.x).OrderBy(x => x).ToArray();
+        var stops = new[] { (x: gm.zoneStart[4].x, gain: 0f) }
+            .Concat(All<Candle>().Where(InForest).Select(c => (x: c.transform.position.x, gain: 0.5f)))
+            .Concat(All<Paper>().Where(InForest).Select(c => (x: c.transform.position.x, gain: 0.3f)))
+            .Append((x: Object.FindFirstObjectByType<Bonfire>().transform.position.x, gain: 0f)).OrderBy(s => s.x).ToArray();
         float fuel = 0.8f, longest = 0; int longestAt = 0;
         for (int i = 1; i < stops.Length; i++)
         {
-            float a = stops[i - 1], b = stops[i]; bool last = i == stops.Length - 1;
+            float a = stops[i - 1].x, b = stops[i].x; bool last = i == stops.Length - 1;
             if (b - a > longest) { longest = b - a; longestAt = i; }
             float inForest = Mathf.Clamp(Mathf.Min(b, zoneEnd) - a, 0, b - a);
             float avg = last ? 0.25f : 0.4f;
             fuel -= (inForest * Rate(avg, true) + (b - a - inForest) * Rate(avg, false)) / AvgSpeed;
             Assert.Greater(fuel, Floor, $"топлива не хватит до x={b:0}");
-            if (!last) fuel = Mathf.Min(1f, fuel + 0.5f);
+            if (!last) fuel = Mathf.Min(1f, fuel + stops[i].gain);
         }
         Assert.AreEqual(stops.Length - 1, longestAt, "самый длинный отрезок без подпитки последний: подъём к поляне");
         Assert.Greater(longest, 60f);
@@ -799,6 +844,131 @@ public class LevelTests
         }
     }
 
+    // ---------- P-4: расширение уровня ----------
+
+    // Зона по положению: дом y>80, подвал 60..75, канализация и шахта y 20..65 слева/справа от x шахты, лес y<21 до поляны.
+    int ZoneOf(Vector3 v)
+    {
+        float x4 = gm.zoneStart[3].x - 3.5f, x6 = gm.zoneStart[5].x - 3.5f;
+        if (v.y > 80f) return 1;
+        if (v.y > 60f && v.y < 75f) return 2;
+        if (v.y < 21f) return v.x < x6 ? 5 : 6;
+        return v.x < x4 ? 3 : 4;
+    }
+
+    [UnityTest] public IEnumerator AtMostThreeCheckpointsPerZone()
+    {
+        // чекпоинт = свеча/керосинка/факел/смола (Candle) + старт зоны
+        for (int z = 1; z <= 6; z++)
+        {
+            int n = 1 + All<Candle>().Count(c => ZoneOf(c.transform.position) == z);
+            Assert.LessOrEqual(n, 3, $"зона {z}: {n} чекпоинтов (с началом зоны)");
+        }
+        yield return null;
+    }
+
+    // Длина пути автора: сумма Манхэттена между ключевыми точками зон. Из прохождения 2026-11-14: 334 с при ~690 м, т.е. ~2 м/с живой скорости.
+    [UnityTest] public IEnumerator LevelPathLengthMatchesTarget()
+    {
+        Vector3 Exit(int t) => All<ZoneExit>().Single(e => e.target == t).transform.position;
+        float M(Vector3 a, Vector3 b) => Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y);
+        var zs = gm.zoneStart; float x4 = zs[3].x - 3.5f;
+        var tunnelEnd = new Vector3(x4 + 23f, 58.5f, 0); var chuteBottom = new Vector3(x4 + 23.5f, zs[3].y, 0);
+        var legs = new[]
+        {
+            M(zs[0], All<Hatch>().Single().transform.position), M(zs[1], Exit(3)), M(zs[2], zs[3]),
+            M(zs[3], tunnelEnd) + M(tunnelEnd, chuteBottom) + M(chuteBottom, tunnelEnd + Vector3.right * 25) + M(tunnelEnd + Vector3.right * 25, Exit(5)),
+            M(zs[4], new Vector3(Object.FindFirstObjectByType<Bonfire>().transform.position.x, zs[4].y, 0)), M(zs[5], Object.FindFirstObjectByType<Bonfire>().transform.position),
+        };
+        float total = legs.Sum();
+        Debug.Log("Ogonok path legs " + string.Join(" + ", legs.Select(l => l.ToString("0"))) + " = " + total.ToString("0") + " m; " + (total / 3f).ToString("0") + " s at 3 m/s; " + (total / 2.06f).ToString("0") + " s at author speed");
+        Assert.Greater(total / 2.06f, 540f, "автор: не меньше 9 мин");
+        Assert.Less(total / 2.06f, 660f, "автор: не больше 11 мин");
+        yield return null;
+    }
+
+    [UnityTest] public IEnumerator CellarShelfBridgesDropOnRopeAndHoldPlayer()
+    {
+        foreach (var d in All<DripSpawner>()) d.enabled = false;
+        foreach (var id in new[] { "shelf1", "shelf2" })
+        {
+            var r = RopeId(id).transform.position;
+            var pit = All<Pit>().Where(t => Mathf.Abs(t.transform.position.y - 64.5f) < 0.1f && t.transform.position.x > r.x).OrderBy(t => t.transform.position.x).First().transform;
+            float left = pit.position.x - pit.localScale.x / 2, right = pit.position.x + pit.localScale.x / 2;
+            var br = All<Bridge>().First(b => b.id == id);
+            Assert.IsFalse(br.transform.GetChild(0).gameObject.activeSelf, id + ": полка спрятана до верёвки");
+            p.flame.Revive(0.8f); Tp(left - 1.5f, 65.4f, 0.6f);
+            yield return Run(120, Right, () => p.flame.Dead);
+            Assert.IsTrue(p.flame.Dead, id + ": без полки провал убивает");
+            p.flame.Revive(0.8f); Tp(r.x, r.y, 0.6f);
+            yield return Run(120, Idle);
+            Assert.IsTrue(br.transform.GetChild(0).gameObject.activeSelf, id + ": верёвка сгорела, полка легла");
+            p.flame.Revive(0.8f); Tp(left - 1.5f, 65.4f, 0.6f);
+            yield return Run(400, Right, () => p.transform.position.x > right + 1.5f);
+            Assert.Greater(p.transform.position.x, right + 1.5f, id + ": перешёл по полке");
+            Assert.IsFalse(p.flame.Dead);
+        }
+    }
+
+    [UnityTest] public IEnumerator SecondLogBridgeOverSecondRavine()
+    {
+        var pit = All<Pit>().Where(InForest).Single(t => Mathf.Approximately(t.transform.localScale.x, 7f) && t.transform.position.x > 200f).transform;
+        float left = pit.position.x - 3.5f, right = pit.position.x + 3.5f;
+        var r = All<Rope>().Where(x => x.trigger && x.id == "log2").OrderBy(x => x.transform.position.y).First().transform.position;
+        var br = All<Bridge>().First(b => b.id == "log2");
+        Assert.IsFalse(br.transform.GetChild(0).gameObject.activeSelf);
+        Tp(left - 2f, 3.6f, 0.6f);
+        yield return Run(120, Right, () => p.transform.position.x > left - 0.3f);
+        Assert.IsFalse(p.flame.Dead, "до верёвки к краю дошёл, не дальше");
+        Tp(r.x, r.y + 1f, 0.6f);
+        yield return Run(120, Idle);
+        Assert.IsTrue(br.transform.GetChild(0).gameObject.activeSelf, "ствол лёг мостом");
+        Tp(left - 1.5f, 3.6f, 0.6f);
+        yield return Run(400, Right, () => p.transform.position.x > right + 1.5f);
+        Assert.Greater(p.transform.position.x, right + 1.5f, "перешёл второй овраг");
+        Assert.IsFalse(p.flame.Dead);
+    }
+
+    // Все три куска тонкого льда (ручьи 1 и 2, поле): маленький проходит, прыгая через просветы (ветер выключен: порывы проверяются отдельно).
+    [UnityTest] public IEnumerator SmallFlameCrossesEveryThinIceStretch()
+    {
+        foreach (var f in All<Fan>().Where(InForest)) f.enabled = false;
+        foreach (var s in All<DripSpawner>()) s.enabled = false;
+        var xs = All<Ice>().Where(i => i.thin).Select(i => i.transform.position.x).OrderBy(x => x).ToArray();
+        var clusters = new List<List<float>> { new List<float> { xs[0] } };
+        for (int i = 1; i < xs.Length; i++) { if (xs[i] - xs[i - 1] > 3f) clusters.Add(new List<float>()); clusters[clusters.Count - 1].Add(xs[i]); }
+        Assert.AreEqual(3, clusters.Count, "ручей 1, ручей 2, лёд на поле");
+        float y = All<Ice>().First(i => i.thin).transform.position.y + 1.1f;
+        foreach (var c in clusters)
+        {
+            float first = c[0], last = c[c.Count - 1];
+            var gaps = c.Zip(c.Skip(1), (a, b) => (a, b)).Where(t => t.b - t.a > 1.5f).Select(t => t.a + 0.5f).ToArray();
+            p.flame.Revive(0.3f); Tp(first - 3f, y, 0.3f); var tri = new System.Text.StringBuilder(); int fi = 0;
+            yield return Run(900, _ =>
+            {
+                float x = p.transform.position.x;
+                bool j = p.Grounded && gaps.Any(e => x > e - 0.9f && x < e - 0.4f);
+                if (fi++ % 6 == 0) tri.Append($"[{fi} x={x:0.0} y={p.transform.position.y:0.0} s={p.flame.size:0.00} g={p.Grounded}] ");
+                return (1, true, j, false, false);
+            }, () => p.transform.position.x > last + 1.0f && p.Grounded); // пень сразу за льдом поля (224) бот не перепрыгивает
+            Assert.IsFalse(p.flame.Dead, $"маленькое прошло лёд x {first:0}..{last:0} gaps={string.Join(",", gaps)} " + tri);
+            Assert.Greater(p.transform.position.x, last + 1.0f);
+        }
+    }
+
+    // Пустые комнаты дома проходимы по бумаге/паутине: паутина забирает ровно 0.05 и сгорает, колонны не запирают кладовку.
+    [UnityTest] public IEnumerator PantryWebsBurnWithoutBlocking()
+    {
+        var webs = All<Cobweb>().Where(InHouse).Where(c => c.transform.position.x > 97f && c.transform.position.x < 121f).OrderBy(c => c.transform.position.x).ToArray();
+        Assert.AreEqual(4, webs.Length, "четыре колонны паутины в кладовке");
+        foreach (var d in All<DripSpawner>()) d.enabled = false;
+        Tp(96.5f, HouseY, 0.7f);
+        float x1 = webs.Last().transform.position.x + 1.5f;
+        yield return Run(900, _ => (1, true, p.Grounded && Physics.CheckBox(p.transform.position + new Vector3(1.1f, 0.3f, 0), new Vector3(0.3f, 0.25f, 0.3f), Quaternion.identity, ~0, QueryTriggerInteraction.Ignore), false, false), () => p.transform.position.x > x1); // прыжок через полки
+        Assert.IsFalse(p.flame.Dead, "прошёл кладовку");
+        Assert.Greater(p.transform.position.x, x1, "паутина не запирает проход");
+        Assert.IsTrue(webs.All(w => w == null), "вся паутина по пути сгорела");
+    }
     static void Capture(string path)
     {
         LogAssert.ignoreFailingMessages = true; // Camera.Render в batchmode шумит ошибкой шейдера редактора
