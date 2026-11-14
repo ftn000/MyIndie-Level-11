@@ -511,7 +511,7 @@ public static class OgonokBuilder
                 switch (c)
                 {
                     case 'I': Cube("Ice", level, p, new Vector3(1, 1, 2), mIce).AddComponent<Ice>(); break;
-                    case 'i': Cube("Ice", level, p, new Vector3(1, 1, 2), mIce).AddComponent<Ice>().thin = true; break;
+                    case 'i': var ic = Cube("Ice", level, p, new Vector3(1, 1, 2), mIce).AddComponent<Ice>(); ic.thin = ic.refreeze = true; break;
                     case 'H': var hi = Cube("IceHot", level, p, new Vector3(1, 1, 2), mIce).AddComponent<Ice>(); hi.heatOnly = true; heatIce.Add(hi); break;
                     case 'R': Cube("Curtain", level, p, new Vector3(0.8f, 1, 2), mRope).AddComponent<Rope>(); break;
                     case 'T': case 'L': case 'j': case 'U': case 'V': case 'J':

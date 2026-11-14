@@ -79,8 +79,8 @@ public class GameManager : MonoBehaviour
         return true;
     }
 
-    // Респаун на последнем чекпоинте: топливо 0.8, форма обычная, подпитки после чекпоинта возвращаются. Прогресс (верёвки, лёд, паутина) не откатывается.
-    public void Respawn() { player.Respawn(cp); player.flame.Revive(0.8f); Paper.Restore(); }
+    // Респаун на последнем чекпоинте: топливо 0.8, форма обычная, подпитки после чекпоинта возвращаются. Прогресс (верёвки, лёд-преграда, паутина) не откатывается; лёд-опора восстанавливается.
+    public void Respawn() { player.Respawn(cp); player.flame.Revive(0.8f); Paper.Restore(); Ice.RestoreAll(); }
 
     public void Win()
     {
