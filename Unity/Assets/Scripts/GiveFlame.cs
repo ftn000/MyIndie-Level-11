@@ -22,7 +22,8 @@ public class GiveFlame : Interactable
         if (UnityEngine.Random.value < 0.5f) Fx.Spark(p.transform.position, 1, 2f);
         if (t < hold) return;
         Done = true;
-        f.Add(-(all ? f.size : cost)); Fx.Spark(transform.position, 30, 5);
+        if (all) f.Surrender(); else f.Add(-cost);
+        Fx.Spark(transform.position, 30, 5);
         Given?.Invoke();
     }
 

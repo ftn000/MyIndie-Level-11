@@ -16,6 +16,7 @@ public class Flame : MonoBehaviour
     public float DrainRate => 0.012f + 0.04f * size;
     public float wind; // горизонтальный ветер на огонёк, м/с (задаёт FlamePlayer)
     bool warm;
+    float cold = 1;
     float lean;
     Billboard visBoard;
 
@@ -24,12 +25,15 @@ public class Flame : MonoBehaviour
     public void Add(float v) { size = Mathf.Clamp01(size + v); if (size <= 0) Kill(); }
     public void Burn(float perSecond, float dt) { Add(-perSecond * dt); if (UnityEngine.Random.value < .5f) Fx.Steam(transform.position + Vector3.down * Radius, 1); }
     public void Warm() => warm = true;
+    public void Cold(float mult) => cold = Mathf.Max(cold, mult); // множитель расхода от среды (лес), действует один кадр
+    // Финал: отдал себя костру. Это не смерть: Died не вызывается, респауна и счётчика нет.
+    public void Surrender() { if (Dead) return; Dead = true; size = 0; }
 
     // Раз в кадр из FlamePlayer: расход, подогрев у свечи, «приглушить» (↓).
     public void Step(float dt, bool dim)
     {
         if (Dead) return;
-        size += warm ? 0.25f * dt : -DrainRate * dt;
+        size += warm ? 0.25f * dt : -DrainRate * cold * dt; cold = 1;
         warm = false;
         if (dim && size > 0.12f) size = Mathf.Max(0.12f, size - 0.5f * dt);
         size = Mathf.Clamp01(size);
