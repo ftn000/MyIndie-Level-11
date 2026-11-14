@@ -40,16 +40,17 @@ public class LevelTests
     static bool InForest(Component c) => c.transform.position.y < 21f;
 
     const Flame.Form Small = Flame.Form.Small, Big = Flame.Form.Big;
+    void Step(int d) => p.MoveInput(Dt, 0, false, false, false, d); // как W/↑ (+1) и S/↓ (-1) в Update
     // Ставит огонька: топливо и форма (обычная по умолчанию) мгновенно, без плавного перехода.
     void Tp(float x, float y, float fuel, Flame.Form form = Flame.Form.Normal) { p.transform.position = new Vector3(x, y, 0); p.flame.fuel = fuel; p.flame.SetForm(form); Physics.SyncTransforms(); }
 
-    // input(frame) -> (dir, held, jumpPressed, dash, down)
+    // input(frame) -> (dir, held, jumpPressed, dash, down); held = Пробел, down = S/↓ нажата в этом кадре
     IEnumerator Run(int frames, Func<int, (int dir, bool held, bool jump, bool dash, bool down)> input, Func<bool> until = null)
     {
         for (int i = 0; i < frames; i++)
         {
             var c = input(i);
-            p.MoveInput(Dt, c.dir, c.held, c.jump, c.dash, c.down);
+            p.MoveInput(Dt, c.dir, c.held, c.jump, c.dash, c.down ? -1 : 0); // down = нажато S/↓ в этом кадре: шаг формы вниз (зажатая = маленькая форма)
             if (p.flame.Dead || (until != null && until())) yield break;
             yield return null;
         }
@@ -109,6 +110,7 @@ public class LevelTests
     [UnityTest] public IEnumerator PitCrossedWithUpdrafts()
     {
         const float X = 500f; // за пределами уровня (W=442)
+        gm.mapRects = null;   // фикстура вне карты: страховка не должна её гасить
         void Slab(float a, float b, float y0, float y1) { var c = GameObject.CreatePrimitive(PrimitiveType.Cube); c.transform.position = new Vector3(X + (a + b) / 2, (y0 + y1) / 2, 0); c.transform.localScale = new Vector3(b - a, y1 - y0, 4); }
         void Draft(float cx, float w) { var u = new GameObject("Updraft"); u.transform.position = new Vector3(X + cx, 8, 0); u.transform.localScale = new Vector3(w, 16, 4); u.AddComponent<Updraft>(); }
         Slab(80, 93, 0, 1); Slab(111, 125, 0, 1); Slab(80, 125, 16, 17); Slab(98, 100, 4, 5); Slab(106, 108, 5, 6); Slab(109, 111, 2, 3);
@@ -138,25 +140,25 @@ public class LevelTests
 
     // ---------- P-5: топливо и форма ----------
 
-    [UnityTest] public IEnumerator DownHoldDoesNotCostFuel()
+    [UnityTest] public IEnumerator SmallFormCostsNoPenalty()
     {
         Tp(40.5f, HouseY, 0.8f);
         yield return Run(60, _ => (0, false, false, false, true)); // секунда фитильком
         float lost = 0.8f - p.flame.fuel;
-        Assert.AreEqual(Flame.DrainAt(Flame.SmallSize), lost, 0.004f, "↓ тратит только обычный расход маленькой формы, без штрафа");
+        Assert.AreEqual(Flame.DrainAt(Flame.SmallSize), lost, 0.004f, "малая форма тратит только обычный расход маленькой формы, без штрафа");
         Assert.AreEqual(Flame.SmallSize, p.flame.size, 0.01f);
-        Assert.IsTrue(p.flame.Small);
+        Assert.AreEqual(Small, p.flame.CurrentForm);
     }
 
-    [UnityTest] public IEnumerator QTogglesBigAndNormalSmoothly()
+    [UnityTest] public IEnumerator StepFormUpAndDownIsSmooth()
     {
         Tp(40.5f, HouseY, 0.8f);
-        p.flame.ToggleBig();
+        Step(1);
         yield return Run(3, Idle);
         Assert.Greater(p.flame.size, Flame.NormalSize, "идёт к большому"); Assert.Less(p.flame.size, Flame.BigSize, "но не мгновенно");
         yield return Run(15, Idle);
         Assert.AreEqual(Flame.BigSize, p.flame.size, 0.001f); Assert.IsTrue(p.flame.IsBig);
-        p.flame.ToggleBig();
+        Step(-1);
         yield return Run(20, Idle);
         Assert.AreEqual(Flame.NormalSize, p.flame.size, 0.001f); Assert.IsFalse(p.flame.IsBig);
         Assert.AreEqual(Flame.Form.Normal, p.flame.CurrentForm);
@@ -166,7 +168,7 @@ public class LevelTests
     {
         Tp(40.5f, HouseY, 0.8f); float s0 = p.flame.size;
         p.flame.Add(-0.3f); Assert.AreEqual(0.5f, p.flame.fuel, 1e-4f); Assert.AreEqual(s0, p.flame.size, 1e-6f, "топливо не меняет форму");
-        p.flame.ToggleBig(); yield return Run(20, Idle);
+        Step(1); yield return Run(20, Idle);
         Assert.AreEqual(Flame.BigSize, p.flame.size, 0.001f); Assert.Less(p.flame.fuel, 0.5f, "форма не добавляет топливо");
     }
 
@@ -177,7 +179,7 @@ public class LevelTests
         yield return null;
         Assert.AreEqual(0.5f - drop.cost, p.flame.fuel, 1e-3f, "капля отняла топливо"); Assert.AreEqual(Flame.BigSize, p.flame.size, 1e-6f, "форма та же");
         var paper = new GameObject("TestPaper").AddComponent<Paper>(); paper.transform.position = p.transform.position;
-        float f0 = p.flame.fuel; p.MoveInput(Dt, 0, false, false, false, false);
+        float f0 = p.flame.fuel; p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.AreEqual(f0 + 0.3f, p.flame.fuel, 0.02f, "бумага +0.3 топлива"); Assert.AreEqual(Flame.BigSize, p.flame.size, 1e-6f);
     }
 
@@ -211,7 +213,7 @@ public class LevelTests
         int maxAlive = 0;
         for (int i = 0; i < 480; i++)
         {
-            p.MoveInput(Dt, 0, false, false, false, false);
+            p.MoveInput(Dt, 0, false, false, false, 0);
             p.flame.fuel = 1f; // долгий замер частиц не должен упираться в смерть игрока
             int alive = 0;
             foreach (var ps in fan.GetComponentsInChildren<ParticleSystem>()) alive += ps.particleCount;
@@ -233,7 +235,7 @@ public class LevelTests
         var fan = Window("WindowFanB"); float fx = fan.transform.position.x;
         // открытое место: между последним укрытием (правый край x=62) и окном
         Tp(fx - 3f, HouseY, 0.8f); SetPhase(fan, 3.0f);
-        p.MoveInput(Dt, 0, false, false, false, false);
+        p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.Less(p.windX, 0f, "в порыв на открытом месте дует");
         yield return Run(120, Idle);
         Assert.IsTrue(p.flame.Dead || p.flame.fuel < 0.5f, "порыв гасит");
@@ -250,7 +252,7 @@ public class LevelTests
     {
         var fan = Window("WindowFanA"); float fx = fan.transform.position.x;
         Tp(fx - 2.5f, HouseY, 0.8f); SetPhase(fan, 3.0f); // правее мебели, левее окна
-        p.MoveInput(Dt, 0, false, false, false, false);
+        p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.Less(p.windX, 0f, "первое окно толкает");
         float s0 = p.flame.fuel;
         yield return Run(30, Idle);
@@ -263,7 +265,7 @@ public class LevelTests
     {
         var fan = Window("WindowFanB"); float fx = fan.transform.position.x;
         Tp(fx - 3f, 25.5f, 0.8f); SetPhase(fan, 3.0f);
-        p.MoveInput(Dt, 0, false, false, false, false);
+        p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.AreEqual(0f, p.windX, "в порыв этажом ниже не дует");
         yield return null;
     }
@@ -272,9 +274,9 @@ public class LevelTests
     {
         var fan = Window("WindowFanB"); var cur = fan.curtain;
         Tp(fan.transform.position.x - 9f, HouseY, 1f);
-        SetPhase(fan, 0.5f); p.MoveInput(Dt, 0, false, false, false, false);
+        SetPhase(fan, 0.5f); p.MoveInput(Dt, 0, false, false, false, 0);
         float calm = cur.localScale.x;
-        SetPhase(fan, 2.6f); p.MoveInput(Dt, 0, false, false, false, false);
+        SetPhase(fan, 2.6f); p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.IsFalse(fan.Gusting, "порыва ещё нет");
         Assert.Greater(cur.localScale.x, calm * 3f, "занавеска вздулась за секунду до порыва");
         yield return null;
@@ -296,7 +298,7 @@ public class LevelTests
 
     // ---------- 2c. люк в подвал ----------
 
-    [UnityTest] public IEnumerator HatchOpensOnLatchRopeAndClosesBehind()
+    [UnityTest] public IEnumerator HatchOpensOnLatchRopeAndStaysOpen()
     {
         var hatch = All<Hatch>().Single(); var r = RopeId("hatch").transform.position;
         Assert.IsFalse(hatch.Open);
@@ -307,8 +309,8 @@ public class LevelTests
         yield return null;
         Assert.Less(p.transform.position.y, gm.zoneStart[1].y + 2f, "упал в подвал");
         Assert.IsFalse(p.flame.Dead);
-        Assert.IsFalse(hatch.Open, "люк захлопнулся");
-        Assert.IsTrue(hatch.transform.GetChild(0).gameObject.activeSelf, "плиты на месте: назад нельзя");
+        Assert.IsTrue(hatch.Open, "люк остался открытым: возвращаться не нужно, но и запирать нечем");
+        Assert.IsFalse(hatch.transform.GetChild(0).gameObject.activeSelf, "плит нет");
         Assert.Less(Vector3.Distance(gm.Checkpoint, gm.zoneStart[1]), 0.1f, "чекпоинт зоны 2");
     }
 
@@ -339,7 +341,7 @@ public class LevelTests
         var d0 = b.drips[0].transform.position;
         Tp(d0.x - 12f, b.transform.position.y, 1f);
         int maxDrops = 0;
-        for (int i = 0; i < 300; i++) { p.flame.fuel = 1f; p.MoveInput(Dt, 0, false, false, false, false); maxDrops = Mathf.Max(maxDrops, DropsAround(b)); yield return null; }
+        for (int i = 0; i < 300; i++) { p.flame.fuel = 1f; p.MoveInput(Dt, 0, false, false, false, 0); maxDrops = Mathf.Max(maxDrops, DropsAround(b)); yield return null; }
         Assert.Greater(maxDrops, 0, "до котла капли падают");
         // отдаём пламя
         Tp(b.transform.position.x - 1f, b.transform.position.y, 0.8f);
@@ -354,7 +356,7 @@ public class LevelTests
         Assert.IsTrue(b.drips.All(d => !d.enabled), "капли выключены");
         yield return Run(240, Idle); // долетают уже упавшие
         int late = 0;
-        for (int i = 0; i < 300; i++) { p.flame.fuel = 1f; p.MoveInput(Dt, 0, false, false, false, false); late = Mathf.Max(late, DropsAround(b)); yield return null; }
+        for (int i = 0; i < 300; i++) { p.flame.fuel = 1f; p.MoveInput(Dt, 0, false, false, false, 0); late = Mathf.Max(late, DropsAround(b)); yield return null; }
         Assert.AreEqual(0, late, "капли больше не падают");
     }
 
@@ -471,7 +473,7 @@ public class LevelTests
             var last = new Dictionary<int, float>(); var gone = new List<(float x, float w)>(); int fresh = 0; var widths = new Dictionary<int, float>();
             for (int i = 0; i < 1000; i++)
             {
-                p.flame.fuel = 1f; p.MoveInput(Dt, 0, false, false, false, false);
+                p.flame.fuel = 1f; p.MoveInput(Dt, 0, false, false, false, 0);
                 var now = RaftsOf(s).ToDictionary(r => r.GetInstanceID());
                 foreach (var kv in now)
                 {
@@ -499,7 +501,7 @@ public class LevelTests
         raft.endX = raft.transform.position.x; // дошёл до конца: тонет
         yield return Run(5, Idle);
         Assert.IsTrue(raft.Sinking, "плот проседает");
-        for (int i = 0; i < 45; i++) { p.MoveInput(Dt, 0, false, false, false, false); yield return null; } // ~0.75 с; Run бросает цикл при гибели, а плоту нужно дотонуть
+        for (int i = 0; i < 45; i++) { p.MoveInput(Dt, 0, false, false, false, 0); yield return null; } // ~0.75 с; Run бросает цикл при гибели, а плоту нужно дотонуть
         Assert.IsTrue(p.flame.Dead, "упал в воду и погас");
         Assert.IsTrue(raft == null, "плот ушёл под воду");
     }
@@ -551,7 +553,7 @@ public class LevelTests
     [UnityTest] public IEnumerator MethaneNormalFlameLiftsUp()
     {
         Tp(100f, 40f, 0.4f); Bubble(new Vector3(100f, 40f, 0)); float s0 = p.flame.fuel;
-        p.MoveInput(Dt, 0, false, false, false, false);
+        p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.Greater(p.Velocity.y, 11f, "толчок вверх");
         Assert.AreEqual(0f, p.Velocity.x, 0.01f, "не большая форма не откидывает вбок");
         Assert.Greater(p.flame.fuel, s0 + 0.15f, "подпитка +0.2");
@@ -561,7 +563,7 @@ public class LevelTests
     [UnityTest] public IEnumerator MethaneBigFlameKnocksSideways()
     {
         Tp(100f, 40f, 0.9f, Big); Bubble(new Vector3(99.8f, 40f, 0));
-        p.MoveInput(Dt, 0, false, false, false, false);
+        p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.Greater(p.Velocity.y, 15f, "сильнее вверх");
         Assert.Greater(Mathf.Abs(p.Velocity.x), 5f, "и откидывает вбок");
         yield return null;
@@ -584,12 +586,12 @@ public class LevelTests
         var fan = All<ShaftFan>().OrderBy(f => f.transform.position.x).First(); var c = fan.transform.position;
         fan.angle = 0f; // лопасть вдоль x
         Tp(c.x + 3f, c.y, 1f); Physics.SyncTransforms();
-        p.MoveInput(Dt, 0, false, false, false, false);
+        p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.IsTrue(p.flame.Dead, "лопасть гасит");
         p.flame.Revive(0.8f);
         // между лопастями: ребром (угол 90°) у стены свободно
         fan.angle = Mathf.PI / 2; Tp(c.x - 5f, c.y, 1f);
-        p.MoveInput(Dt, 0, false, false, false, false);
+        p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.IsFalse(p.flame.Dead, "лопасть ребром: у стены проход свободен");
         // ремень: сгорел, лопасти встали
         var belt = RopeId("fanbelt").transform.position;
@@ -776,7 +778,7 @@ public class LevelTests
     float IdleLoss(Vector3 start)
     {
         p.flame.Revive(0.5f); p.transform.position = start; Physics.SyncTransforms();
-        for (int i = 0; i < 60; i++) p.MoveInput(Dt, 0, false, false, false, false);
+        for (int i = 0; i < 60; i++) p.MoveInput(Dt, 0, false, false, false, 0);
         return 0.5f - p.flame.fuel;
     }
 
@@ -871,13 +873,13 @@ public class LevelTests
         var gale = All<Fan>().Where(InForest).OrderBy(f => f.transform.position.x).First(); float fx = gale.transform.position.x;
         gm.JumpToZone(5);
         Tp(fx - 3f, 3.6f, 0.8f); SetPhase(gale, 3.0f);
-        p.MoveInput(Dt, 0, false, false, false, false);
+        p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.Less(p.windX, 0f, "на опушке без укрытия дует");
         Tp(32f, 3.6f, 0.8f); SetPhase(gale, 3.0f); // между пнями 26 и 33
-        p.MoveInput(Dt, 0, false, false, false, false);
+        p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.AreEqual(0f, p.windX, "за пнём не дует");
         Tp(10f, 81.6f, 0.8f); SetPhase(gale, 3.0f); // x в зоне действия, но в доме (окна дома там не достают)
-        p.MoveInput(Dt, 0, false, false, false, false);
+        p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.AreNotEqual(-6.25f, p.windX, "ветер леса не дует в других зонах");
         yield return null;
     }
@@ -885,7 +887,7 @@ public class LevelTests
     [UnityTest] public IEnumerator ForestIntroPullsCameraBack()
     {
         Assert.IsTrue(gm.JumpToZone(5));
-        p.MoveInput(Dt, 0, false, false, false, false);
+        p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.IsTrue(CamFollow.I.Establishing, "общий план на старте зоны 5");
         for (int i = 0; i < 90; i++) yield return null;
         Assert.IsTrue(CamFollow.I.Establishing, "держится ~2 с");
@@ -1161,19 +1163,19 @@ public class LevelTests
     [UnityTest] public IEnumerator PaperTakenAfterCheckpointReturnsOnRespawn()
     {
         var paper = FirstHousePaper(); var pp = paper.transform.position;
-        Tp(pp.x, pp.y, 0.3f); p.MoveInput(Dt, 0, false, false, false, false);
+        Tp(pp.x, pp.y, 0.3f); p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.IsFalse(paper.gameObject.activeSelf, "бумага взята"); Assert.Greater(p.flame.fuel, 0.55f);
         p.flame.Kill(); gm.Respawn();
         Assert.IsTrue(paper.gameObject.activeSelf, "после чекпоинта не взято: бумага снова на месте");
         Assert.AreEqual(0.8f, p.flame.fuel, 1e-4f, "респаун: fuel 0.8"); Assert.AreEqual(Flame.Form.Normal, p.flame.CurrentForm, "форма обычная");
-        p.MoveInput(Dt, 0, false, false, false, false);
+        p.MoveInput(Dt, 0, false, false, false, 0);
         yield return null;
     }
 
     [UnityTest] public IEnumerator PaperTakenBeforeCheckpointStaysTaken()
     {
         var paper = FirstHousePaper(); var pp = paper.transform.position;
-        Tp(pp.x, pp.y, 0.3f); p.MoveInput(Dt, 0, false, false, false, false);
+        Tp(pp.x, pp.y, 0.3f); p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.IsFalse(paper.gameObject.activeSelf);
         gm.SetCheckpoint(pp + Vector3.up); // дошёл до следующего чекпоинта
         p.flame.Kill(); gm.Respawn();
@@ -1260,6 +1262,153 @@ public class LevelTests
         Assert.IsFalse(ice.Broken);
         Assert.IsTrue(ice.GetComponent<Collider>().enabled);
         yield return null;
+    }
+
+    // ---------- P-7: рост без выталкивания вверх, страховка вне карты, люк ----------
+
+    const float HouseFloor = 81f; // верх пола дома; левая стена дома x 0..1 до потолка, комод 'm' x 8..10 высотой 2 м
+    static float Grown(Flame.Form a, Flame.Form b) => Flame.RadiusOf(Flame.SizeOf(b)) - Flame.RadiusOf(Flame.SizeOf(a));
+
+    // Ставит у левой стены дома вплотную, даёт осесть и возвращает y.
+    IEnumerator AtHouseWall(float x, Flame.Form form) // x: центр
+    {
+        Tp(x, HouseFloor + Flame.RadiusOf(Flame.SizeOf(form)) + 0.01f, 1f, form);
+        yield return Run(10, Idle);
+    }
+
+    void AssertStayedPut(float y0, float maxGrowth, string why)
+    {
+        Assert.Less(p.transform.position.y - y0, maxGrowth + 0.05f, "не выросло вверх по стене: " + why);
+        Assert.IsTrue(gm.InMap(p.transform.position), "внутри карты: " + why);
+        Assert.IsFalse(p.flame.Dead, why);
+    }
+
+    [UnityTest] public IEnumerator GrowthAtWallDoesNotLiftPlayerThroughCeiling()
+    {
+        yield return AtHouseWall(1f + Flame.RadiusOf(Flame.NormalSize) + 0.02f, Flame.Form.Normal);
+        float y0 = p.transform.position.y;
+        Step(1);
+        yield return Run(120, Idle);
+        Assert.IsTrue(p.flame.IsBig);
+        AssertStayedPut(y0, Grown(Flame.Form.Normal, Big), "Q у стены");
+    }
+
+    [UnityTest] public IEnumerator GrowthAtLedgeDoesNotClimbIt()
+    {
+        yield return AtHouseWall(8f - Flame.RadiusOf(Flame.NormalSize) - 0.02f, Flame.Form.Normal);
+        float y0 = p.transform.position.y;
+        Step(1);
+        yield return Run(120, Idle);
+        AssertStayedPut(y0, Grown(Flame.Form.Normal, Big), "Q у уступа");
+        Assert.Less(p.transform.position.x, 8f, "на комод не запрыгнул сам");
+    }
+
+    [UnityTest] public IEnumerator SmallStepUpAtWallDoesNotLiftPlayer()
+    {
+        yield return AtHouseWall(1f + Flame.RadiusOf(Flame.SmallSize) + 0.02f, Small);
+        float y0 = p.transform.position.y;
+        Step(1);
+        yield return Run(120, Idle);
+        Assert.AreEqual(Flame.Form.Normal, p.flame.CurrentForm);
+        AssertStayedPut(y0, Grown(Small, Flame.Form.Normal), "W у стены");
+    }
+
+    [UnityTest] public IEnumerator FormStepsUpAndDownByOneAndHolds()
+    {
+        Tp(40.5f, HouseY, 1f, Small);
+        var seen = new List<Flame.Form>();
+        foreach (var d in new[] { 1, 1, 1, -1, -1, -1 }) { Step(d); seen.Add(p.flame.CurrentForm); yield return null; }
+        CollectionAssert.AreEqual(new[] { Flame.Form.Normal, Big, Big, Flame.Form.Normal, Small, Small }, seen, "шаг за нажатие, на краю ничего");
+        yield return Run(120, Idle);
+        Assert.AreEqual(Small, p.flame.CurrentForm, "форма держится без удержания клавиши");
+        Assert.AreEqual(Flame.SmallSize, p.flame.size, 0.001f);
+        Step(1); Step(1);
+        yield return Run(60, Idle);
+        Assert.AreEqual(Flame.BigSize, p.flame.size, 0.001f, "два нажатия W подряд: маленький -> большой");
+    }
+
+    [UnityTest] public IEnumerator SmallInGrateCellDoesNotGrowUntilItLeaves()
+    {
+        var vent = All<Vent>().Single(v => Mathf.Abs(v.transform.position.x - (ShaftX0() + 16.5f)) < 0.1f); // решётка тоннеля шахты 1
+        var vp = vent.transform.position;
+        Tp(vp.x, vp.y - 0.5f + Flame.RadiusOf(Flame.SmallSize) + 0.01f, 1f, Small);
+        float y0 = p.transform.position.y;
+        Step(1); Step(1);                          // W W: форма-желание большая
+        yield return Run(120, Idle);               // но в решётке места нет
+        Assert.IsTrue(p.flame.IsSmall, $"в решётке не растёт: size={p.flame.size}");
+        Assert.AreEqual(y0, p.transform.position.y, 0.02f, "y не меняется");
+        Assert.IsFalse(p.flame.Dead);
+        Assert.AreEqual(Flame.Form.Big, p.flame.CurrentForm, "желание запомнилось");
+        yield return Run(120, Right, () => p.transform.position.x > vp.x + 2f);
+        yield return Run(40, Idle);
+        Assert.AreEqual(Flame.BigSize, p.flame.size, 0.001f, "вышел из решётки и дорос");
+    }
+
+    [UnityTest] public IEnumerator RaftPressingPlayerIntoWallDoesNotLiftPlayer()
+    {
+        var s = Streams()[1];
+        var raft = RaftsOf(s).Where(r => r.Risen && !r.Sinking && Mathf.Abs(r.endX - r.transform.position.x) > 4f).First();
+        Tp(raft.transform.position.x, raft.Top + p.H + 0.02f, 1f);
+        yield return Run(5, Idle);
+        var wall = GameObject.CreatePrimitive(PrimitiveType.Cube); // выше головы, снизу вровень с плотом
+        wall.transform.position = new Vector3(p.transform.position.x + raft.dir * (p.H + 0.4f), raft.Top + 2f, 0);
+        wall.transform.localScale = new Vector3(1, 4, 4);
+        Physics.SyncTransforms();
+        float y0 = p.transform.position.y, maxY = y0;
+        for (int i = 0; i < 40 && !p.flame.Dead; i++) { p.MoveInput(Dt, 0, false, false, false, 0); maxY = Mathf.Max(maxY, p.transform.position.y); yield return null; }
+        Object.Destroy(wall);
+        Assert.Less(maxY - y0, 0.1f, "плот прижал к стене, а Игни не взлетел по ней");
+        Assert.IsFalse(p.flame.Dead);
+    }
+
+    [UnityTest] public IEnumerator FlameOutsideAllZonesGoesOutAndRespawnsAtCheckpoint()
+    {
+        Assert.IsTrue(gm.InMap(p.transform.position));
+        var cp = gm.Checkpoint;
+        p.transform.position = new Vector3(-60f, 40f, 0); Physics.SyncTransforms();
+        Assert.IsFalse(gm.InMap(p.transform.position));
+        yield return Frames(30); // 0.5 с > 0.2 с
+        Assert.IsTrue(p.flame.Dead, "вне карты погас");
+        yield return Frames(90); // + 1.2 с на респаун
+        Assert.IsFalse(p.flame.Dead);
+        Assert.Less(Vector3.Distance(p.transform.position, cp), 0.1f, "стоит на чекпоинте");
+    }
+
+    [UnityTest] public IEnumerator ZoneStartsAreInsideTheMap()
+    {
+        foreach (var z in gm.zoneStart) Assert.IsTrue(gm.InMap(z), $"старт зоны {z} внутри карты");
+        yield return null;
+    }
+
+    static void BurnLatch(Hatch h) => typeof(Hatch).GetMethod("OnBurned", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).Invoke(h, new object[] { h.id });
+
+    [UnityTest] public IEnumerator HatchStaysOpenAfterRespawnInHouse()
+    {
+        var hatch = All<Hatch>().Single(); var r = RopeId("hatch").transform.position;
+        Tp(r.x + 0.3f, r.y - 0.9f, 1f);
+        yield return Run(200, Idle, () => hatch.Open);
+        Assert.IsTrue(hatch.Open);
+        Assert.Greater(gm.Checkpoint.y, 80f, "чекпоинт в доме");
+        gm.Respawn();
+        yield return Frames(5);
+        Assert.IsTrue(hatch.Open, "люк открыт после респауна");
+        Assert.IsFalse(hatch.transform.GetChild(0).gameObject.activeSelf, "путь в подвал есть");
+    }
+
+    [UnityTest] public IEnumerator CellarShaftIsAboveAnyJump()
+    {
+        var hatch = All<Hatch>().Single(); BurnLatch(hatch);
+        gm.JumpToZone(2); yield return null;
+        float floorY = gm.zoneStart[1].y, hx = hatch.transform.GetChild(0).position.x + 0.5f; // шахта люка: 2 клетки
+        Tp(hx, floorY, 1f, Big);
+        float maxY = 0;
+        yield return Run(900, i =>
+        {
+            p.flame.fuel = 1f; maxY = Mathf.Max(maxY, p.transform.position.y);
+            return (0, true, i % 25 == 0, i % 30 == 7, false);
+        });
+        Assert.IsFalse(p.flame.Dead);
+        Assert.Less(maxY, floorY + 6f, "из подвала в люк не допрыгнуть: заперто, поэтому люк и не нужно закрывать");
     }
 
     [UnityTest] public IEnumerator BarrierIceStaysGoneAfterMelt()

@@ -27,23 +27,23 @@ public class GameManager : MonoBehaviour
         (3.5f, 81.6f, "Стрелки / A D — идти, Пробел — прыжок"), (19, 81.6f, "Shift — вспышка (−15% топлива)"),
         (40, 81.6f, "Окно дует порывами. Занавеска вздувается заранее — прячься за мебель"),
         (84, 81.6f, "Капли и лужи отнимают топливо"),
-        (98, 81.6f, "Кладовка: паутина сгорает и забирает кусочек топлива"), (140, 81.6f, "Лёд в проёме: нажми Q — большое пламя плавит лёд (Q ещё раз — обратно)"),
-        (170, 81.6f, "Второе окно. Прячься за мебель и пережидай порыв"), (112 + 90, 85.6f, "Держи прыжок у верёвки: сгорит, и шкаф ляжет мостом"),
+        (98, 81.6f, "Кладовка: паутина сгорает и забирает кусочек топлива"), (140, 81.6f, "Лёд в проёме: жми W / ↑ — большое пламя плавит лёд (S / ↓ — меньше)"),
+        (170, 81.6f, "Второе окно. Прячься за мебель и пережидай порыв"), (112 + 90, 85.6f, "Держи Пробел у верёвки: сгорит, и шкаф ляжет мостом"),
         (214 + 70, 65.6f, "Прыгни к верёвке: она роняет полку-мост через провал"), (214 + 80 + 82, 65.6f, "Впереди котёл: подойди и держи E, чтобы отдать часть пламени"),
-        (214 + 80 + 106, 65.6f, "Зажми ↓ — стань фитильком"),
+        (214 + 80 + 106, 65.6f, "S / ↓ — меньше: стань фитильком"),
         (12, 25.5f, "Вода гасит мгновенно. Прыгай по уступам, жги свет факелов"), (40, 25.5f, "Плоты плывут по течению: прыгай на них, пока не утонули"),
         (131, 25.5f, "Течение навстречу: перепрыгивай с плота на плот, на одном не стой"),
         (85, 25.5f, "Пузырь метана: коснись — вспышка и подпитка. Большая форма откинет вбок"),
-        (134, 25.5f, "Тёплый воздух из трубы: держи прыжок и лети наверх"), (244, 25.5f, "Тёплый воздух из трубы: держи прыжок и лети наверх"),
-        (166 + 110, 32.5f, "Тёплые потоки несут вверх: держи прыжок"),
-        (164 + 110, 44.5f, "Лопасти гасят. Проскочи между ними у стены или пережги ремень"), (307, 37f, "Решётка поперёк потока: зажми ↓ (фитилёк проходит решётку) и держи прыжок"),
-        (174 + 110, 58.5f, "Зажми ↓ — стань фитильком"),
+        (134, 25.5f, "Тёплый воздух из трубы: держи Пробел и лети наверх"), (244, 25.5f, "Тёплый воздух из трубы: держи Пробел и лети наверх"),
+        (166 + 110, 32.5f, "Тёплые потоки несут вверх: держи Пробел"),
+        (164 + 110, 44.5f, "Лопасти гасят. Проскочи между ними у стены или пережги ремень"), (307, 37f, "Решётка поперёк потока: стань фитильком (S / ↓) и держи Пробел"),
+        (174 + 110, 58.5f, "S / ↓ — меньше: стань фитильком"),
         // зона 5 (лес)
         (6, 3.6f, "Холодно: в лесу пламя тает быстрее. Снег — это мелкие капли, под кронами его нет"),
         (44, 3.6f, "Ветер дует навстречу. Прячься за пнями и пережидай порыв"),
-        (62, 3.6f, "Лёд тает от большого пламени (Q). Тонкий лёд держит только фитилька: зажми ↓"),
+        (62, 3.6f, "Лёд тает от большого пламени (W / ↑). Тонкий лёд держит только фитилька: S / ↓"),
         (116, 3.6f, "Подпали верёвку: ствол ляжет мостом"),
-        (356, 7f, "Подъём без подпитки. Береги топливо: в форме фитилька оно тает медленнее"), (150, 3.6f, "Лёд тоньше: держит только фитилька. Зажми ↓ и иди"), (205, 3.6f, "Ветер и лёд: пережидай порыв за пнём"),
+        (356, 7f, "Подъём без подпитки. Береги топливо: в форме фитилька оно тает медленнее"), (150, 3.6f, "Лёд тоньше: держит только фитилька. Нажми S / ↓ и иди"), (205, 3.6f, "Ветер и лёд: пережидай порыв за пнём"),
         // зона 6
         (411, 13.6f, "Ветер стих. Подойди к костру и держи E: отдай себя целиком"),
     };
@@ -93,16 +93,34 @@ public class GameManager : MonoBehaviour
     public void StartFinale() { if (Playing) state = State.Finale; }
     public void FinishFinale() { state = State.Win; winT = 0; winTitle = "Не дай погаснуть"; }
 
+    // Страховка: если центр огонька дольше 0.2 с вне всех комнат уровня (с запасом 1 м), он гаснет и вернётся к чекпоинту.
+    public Rect[] mapRects; // мировые прямоугольники комнат, задаёт OgonokBuilder
+    float outT;
+    public bool InMap(Vector2 p)
+    {
+        if (mapRects == null) return true;
+        foreach (var r in mapRects) if (p.x > r.xMin - 1 && p.x < r.xMax + 1 && p.y > r.yMin - 1 && p.y < r.yMax + 1) return true;
+        return false;
+    }
+
     void Update()
     {
-        var k = Keyboard.current; if (k == null) return;
-        if (state == State.Title && (k.spaceKey.wasPressedThisFrame || k.enterKey.wasPressedThisFrame)) state = State.Play;
-        else if (k.rKey.wasPressedThisFrame || (state == State.Win && k.enterKey.wasPressedThisFrame))
-            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        if (state == State.Play && !player.flame.Dead)
+        {
+            outT = InMap(player.transform.position) ? 0 : outT + Time.deltaTime;
+            if (outT > 0.2f) { outT = 0; player.flame.Kill(); }
+        }
+        var k = Keyboard.current;
+        if (k != null)
+        {
+            if (state == State.Title && (k.spaceKey.wasPressedThisFrame || k.enterKey.wasPressedThisFrame)) state = State.Play;
+            else if (k.rKey.wasPressedThisFrame || (state == State.Win && k.enterKey.wasPressedThisFrame))
+                SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-        var fk = new[] { k.f1Key, k.f2Key, k.f3Key, k.f4Key, k.f5Key, k.f6Key };
-        for (int i = 0; i < fk.Length; i++) if (fk[i].wasPressedThisFrame) JumpToZone(i + 1);
+            var fk = new[] { k.f1Key, k.f2Key, k.f3Key, k.f4Key, k.f5Key, k.f6Key };
+            for (int i = 0; i < fk.Length; i++) if (fk[i].wasPressedThisFrame) JumpToZone(i + 1);
 #endif
+        }
         if (state == State.Play) playT += Time.deltaTime;
         if (state == State.Win) winT += Time.deltaTime;
         if (state == State.Play && player.flame.Dead)
@@ -137,7 +155,7 @@ public class GameManager : MonoBehaviour
             return;
         }
         if (player.flame.Dead) { GUI.Label(new Rect(0, Screen.height * .4f, Screen.width, 60), "Погас…", style); return; }
-        if (playT < 9) { style.fontSize = Screen.height / 34; GUI.Label(new Rect(0, 20, Screen.width, 40), "Размер выбираешь сам (Q, ↓), топливо тает всегда. Грейся у свечей.", style); }
+        if (playT < 9) { style.fontSize = Screen.height / 34; GUI.Label(new Rect(0, 20, Screen.width, 40), "Размер выбираешь сам (W / ↑ больше, S / ↓ меньше), топливо тает всегда. Грейся у свечей.", style); }
         var pp = player.transform.position;
         foreach (var (hx, hy, t) in Hints)
             if (Mathf.Abs(hx - pp.x) < 7 && Mathf.Abs(hy - pp.y) < 6) { style.fontSize = Screen.height / 34; GUI.Label(new Rect(0, Screen.height * .88f, Screen.width, 40), t, style); break; }
