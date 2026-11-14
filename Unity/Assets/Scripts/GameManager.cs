@@ -98,7 +98,7 @@ public class GameManager : MonoBehaviour
     float outT;
     public bool InMap(Vector2 p)
     {
-        if (mapRects == null) return true;
+        if (mapRects == null || mapRects.Length == 0) return true;
         foreach (var r in mapRects) if (p.x > r.xMin - 1 && p.x < r.xMax + 1 && p.y > r.yMin - 1 && p.y < r.yMax + 1) return true;
         return false;
     }

@@ -139,3 +139,13 @@
 - **Код.** `Flame.CurrentForm` (желаемая форма) меняется `StepForm(±1)`, `Small`, `BigPref`, `ToggleBig` удалены, `Step(dt)` без параметра. `FlamePlayer.MoveInput(..., int formStep)` вместо `bool down`: бот и игрок управляют формой одним путём. Рост по-прежнему через проверку места из P-7: W в тесноте запоминает желание, Игни дорастает, когда место появится. Респаун: обычная форма (`Revive`).
 - **Тесты.** В `Run` флаг `down` в кортеже = «S нажата в этом кадре» (шаг вниз, зажатая = остаётся маленькой), `Step(±1)` = W / S. Новые: `FormStepsUpAndDownByOneAndHolds`, `SmallStepUpAtWallDoesNotLiftPlayer`; `SmallInGrateCellDoesNotGrowUntilItLeaves` теперь проверяет и дорастание после выхода. Не покрыто автотестом: клавиши в `Update` (нет InputTestFixture), что W/↑ не прыгают, видно из кода: `held`/`jumpP` читают только Пробел.
 - **Подсказки и README** переписаны под новую раскладку; `index.html` (веб-прототип) не трогали.
+
+## P-9 Придавило мостом
+- `Bridge.Drop` больше не включает плиты мгновенно: они падают с высоты 4 м за 0.4 с (ease-in), коллайдеры выключены, пока летят, поэтому игрока не заклинивает в геометрии.
+- Правило: в конце падения плиты встают на место, включаются коллайдеры; если `Renderer.bounds` плиты пересекает хитбокс игрока (центр, сторона 1.9·H) → `Flame.Kill()`, респаун на чекпоинте. Мост остаётся лежать. Общий код `Bridge`: шкаф, шкафы-полки подвала, брёвна леса.
+- Тесты: `BridgeCrushesPlayerUnderIt`, `BridgeDoesNotHarmPlayerBesideIt`, `PlayerOutrunsFallingBridge` (фикстура в воздухе, в доме мост упирается в стену). Падающую плиту нельзя «сбежать» через провал: пока она летит, провал под ней смертелен, поэтому `CellarShaftIsAboveAnyJump` отключает `Pit` (бот в нём сжигал верёвку полки и падал). Полный прогон: 85/86, красный `FlameOutsideAllZonesGoesOutAndRespawnsAtCheckpoint` падает и на чистом main (не из P-9). Ogonok → Build Level 1 (обычный и Art Preview) и WebGL собираются.
+
+## P-10 Страховка «вне карты» и старые сцены
+- Unity десериализует отсутствующее поле-массив как пустой массив, не null. `GameManager.InMap` теперь трактует пустой `mapRects` как «карта не задана» (true); тест `EmptyMapRectsMeansNoMapGuard`.
+- Сцены `Level1.unity` и `Level1Art.unity` пересобраны и коммитятся вместе с фиксом (в них есть `mapRects`). Правило: после каждой правки builder'а сцены коммитим; шум сборки (Mobile_RPAsset, ProjectSettings, материалы) откатываем.
+- Тот же корень вылечил красный `FlameOutsideAllZonesGoesOutAndRespawnsAtCheckpoint`: PlayMode 87/87.
