@@ -60,12 +60,29 @@ public static class OgonokBuilder
         BuildVolume();
         var gm = new GameObject("GameManager").AddComponent<GameManager>();
         gm.player = player; gm.zoneStart = zoneStarts.ToArray();
+        gm.mapRects = ZoneRects();
 
         if (art) BuildArtBackdrop();
         EditorSceneManager.SaveScene(scene, art ? "Assets/Scenes/Level1Art.unity" : "Assets/Scenes/Level1.unity");
         if (!art) EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene("Assets/Scenes/Level1.unity", true) };
         AssetDatabase.SaveAssets();
         Debug.Log(art ? "Ogonok: Level1Art built" : "Ogonok: Level1 built");
+    }
+
+    // Габариты зон в метрах (страховка «вне карты»): bbox непустых клеток в полосе сетки каждой зоны.
+    // Полосы (кол. от-до, строки от-до) совпадают с раскладкой LayoutGrid: зоны 3 и 4 делят строки, зоны 5 и 6 тоже.
+    static Rect[] ZoneRects()
+    {
+        var bands = new[] { (0, W - 1, 0, 13), (0, W - 1, 14, 29), (0, 269, 56, 73), (270, W - 1, 30, 73), (0, 389, 74, H - 1), (390, W - 1, 74, H - 1) };
+        var res = new System.Collections.Generic.List<Rect>();
+        foreach (var (c0, c1, r0, r1) in bands)
+        {
+            int ax = int.MaxValue, bx = -1, ay = int.MaxValue, by = -1;
+            for (int y = r0; y <= r1; y++) for (int x = c0; x <= c1; x++)
+                if (g[y, x] != '.') { ax = Mathf.Min(ax, x); bx = Mathf.Max(bx, x); ay = Mathf.Min(ay, y); by = Mathf.Max(by, y); }
+            if (bx >= 0) res.Add(Rect.MinMaxRect(ax, H - (by + 1), bx + 1, H - ay));
+        }
+        return res.ToArray();
     }
 
     // ---------- уровень: сетка из зон ----------

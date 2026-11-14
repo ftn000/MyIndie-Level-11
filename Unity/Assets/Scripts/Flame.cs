@@ -19,14 +19,13 @@ public class Flame : MonoBehaviour
 
     public bool Dead { get; private set; }
     public event Action Died;
-    public bool BigPref { get; private set; }  // Q: обычный <-> большой
-    public bool Small { get; private set; }    // зажато ↓
-    public Form CurrentForm => Small ? Form.Small : BigPref ? Form.Big : Form.Normal;
+    public Form CurrentForm { get; private set; } = Form.Normal; // желаемая форма: W/↑ на шаг больше, S/↓ меньше, держится сама
     public bool IsBig => size >= BigAt;
     public bool IsSmall => size < SmallBelow;
     public static float SizeOf(Form f) => f == Form.Small ? SmallSize : f == Form.Big ? BigSize : NormalSize;
     public static float DrainAt(float s) => 0.012f + 0.04f * s;
-    public float Radius => (10 + 16 * size) / 64f; // половина хитбокса, м (1 тайл = 1 м)
+    public static float RadiusOf(float s) => (10 + 16 * s) / 64f;
+    public float Radius => RadiusOf(size); // половина хитбокса, м (1 тайл = 1 м)
     public float DrainRate => DrainAt(size);
     // Яркость от топлива: 1 при fuel >= 0.6, к 0.2 у нуля. Радиус света от неё не зависит.
     public float Brightness => Mathf.Lerp(0.2f, 1f, Mathf.Clamp01(fuel / DimFuel));
@@ -48,17 +47,16 @@ public class Flame : MonoBehaviour
     public void Burn(float perSecond, float dt) { Add(-perSecond * dt); if (UnityEngine.Random.value < .5f) Fx.Steam(transform.position + Vector3.down * Radius, 1); }
     public void Warm() => warm = true;
     public void Cold(float mult) => cold = Mathf.Max(cold, mult); // множитель расхода от среды (лес), действует один кадр
-    public void ToggleBig() => BigPref = !BigPref;
+    public void StepForm(int d) => CurrentForm = (Form)Mathf.Clamp((int)CurrentForm + d, 0, 2); // Small=0, Normal=1, Big=2
     // Мгновенно (респаун, тесты): выбранная форма и её размер.
-    public void SetForm(Form f) { BigPref = f == Form.Big; Small = f == Form.Small; size = SizeOf(f); }
+    public void SetForm(Form f) { CurrentForm = f; size = SizeOf(f); }
     // Финал: отдал себя костру. Это не смерть: Died не вызывается, респауна и счётчика нет.
     public void Surrender() { if (Dead) return; Dead = true; fuel = 0; }
 
-    // Раз в кадр из FlamePlayer: расход (всегда), подогрев у свечи, переход к выбранной форме (↓ = маленький, топливо не тратит).
-    public void Step(float dt, bool small)
+    // Раз в кадр из FlamePlayer: расход (всегда), подогрев у свечи, плавный переход к выбранной форме.
+    public void Step(float dt)
     {
         if (Dead) return;
-        Small = small;
         size = Mathf.MoveTowards(size, SizeOf(CurrentForm), 4f * dt); // 0.8 хода от маленького до большого за 0.2 с
         fuel += warm ? 0.25f * dt : -DrainRate * cold * dt; cold = 1;
         warm = false;
