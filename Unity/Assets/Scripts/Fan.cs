@@ -7,6 +7,7 @@ using UnityEngine;
 public class Fan : Interactable
 {
     public Transform blades, curtain;
+    public GameObject curtainRest, curtainWind; // арт: штора в покое / при предупреждении и порыве (подмена спрайта)
     public float burn = 0.25f;   // расход пламени в секунду под порывом
     public float range = 22f;    // на сколько метров влево достаёт порыв
     public float offset;         // сдвиг фазы цикла, с (тесты и разнесение окон)
@@ -76,6 +77,7 @@ public class Fan : Interactable
         float ph = Phase;
         bool gust = Gusting, warn = ph > WarnAt && ph <= GustAt;
         if (blades) blades.Rotate(0, 0, (gust ? 1200 : warn ? 500 : 60) * dt);
+        if (curtainRest) { bool up = gust || warn; curtainRest.SetActive(!up); curtainWind.SetActive(up); }
         if (curtain)
         {
             float b = gust ? 1 : warn ? Mathf.InverseLerp(WarnAt, GustAt, ph) : 0;

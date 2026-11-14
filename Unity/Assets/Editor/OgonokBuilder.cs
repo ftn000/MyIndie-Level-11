@@ -13,7 +13,7 @@ using UnityEngine.Rendering.Universal;
 // b плита моста, h плита люка, P провал (смерть), w паутина (вертикальная колонна = одна паутина), v решётка, p бумага, ~ лужа,
 // d капля, e капля, которую гасит котёл, c свеча, k керосинка, f газовый факел, g мусорный пакет (бумага), j верёвка-ремень вентилятора (id fanbelt), G выход из зоны (ZoneExit в зону 3).
 // Зоны 5–6 (P-3): n пень/бревно (коллайдер, укрытие от ветра), o крона (коллайдер, под ней снега нет), r смола (чекпоинт).
-public static class OgonokBuilder
+public static partial class OgonokBuilder
 {
     // P-4: вставки в зоны (м): дом, подвал, канализация, лес. Зоны 2, 4, 6 сдвинуты вправо на сумму вставок слева от них.
     const int D1 = 90, D2 = 80, D3 = 110, D5 = 190, W = 442, H = 94;
@@ -119,8 +119,8 @@ public static class OgonokBuilder
 
         // 1. Гостиная (обучение): камин, журнальный столик, кресло с газетой, комод с газетой
         extras.Add(l => BuildFireplace(l, x0 + 3, y0 + 12, false));
-        B(8, 11, 9, 12, 'm'); B(12, 9, 13, 12, 'm'); S(12, 8, 'p'); S(19, 12, 'p');
-        B(24, 11, 26, 12, 'm'); S(25, 10, 'p');
+        if (art) extras.Add(l => Room1Final(l)); // P-12: гостиная из слоёв room 1 вместо грейбокс-мебели
+        else { B(8, 11, 9, 12, 'm'); B(12, 9, 13, 12, 'm'); S(12, 8, 'p'); S(19, 12, 'p'); B(24, 11, 26, 12, 'm'); S(25, 10, 'p'); }
         B(30, 1, 30, 5, '#');
 
         // 2. Коридор: окно A (порыв только толкает), окно B (порыв гасит). Укрытия: мебель между игроком и окном.
@@ -518,7 +518,7 @@ public static class OgonokBuilder
                 char c = g[ty, tx];
                 if (c == '#' || c == 'm' || c == 'n' || c == 'o')
                 {
-                    int e = tx; while (e + 1 < W && g[ty, e + 1] == c) e++;
+                    int e = tx; while (e + 1 < W && g[ty, e + 1] == c && !(art && e + 1 == 30)) e++; // art: у гостиной (x < 30) свои невидимые кубы, режем ряд на границе
                     int len = e - tx + 1;
                     var (sn, sm) = c == '#' ? ("Stone", mStone) : c == 'm' ? ("Furniture", mFurn) : c == 'n' ? ("Trunk", mTrunk) : ("Crown", mCrown);
                     Cube(sn, level, new Vector3(tx + len / 2f, H - 1 - ty + 0.5f, 0), new Vector3(len, 1, Depth), sm);
@@ -812,7 +812,7 @@ public static class OgonokBuilder
                     var q = GameObject.CreatePrimitive(PrimitiveType.Quad); Object.DestroyImmediate(q.GetComponent<Collider>());
                     q.name = n; q.transform.SetParent(root, false); q.transform.position = new Vector3(x + w / 2, y + h / 2, z);
                     q.transform.localScale = new Vector3(col % 2 == 0 ? w : -w, row % 2 == 0 ? h : -h, 1);
-                    q.GetComponent<Renderer>().sharedMaterial = m;
+                    q.GetComponent<Renderer>().sharedMaterial = m; q.GetComponent<Renderer>().sortingOrder = -200; // P-12: слои комнат (-100..-60) рисуются поверх задников
                 }
             }
         }
