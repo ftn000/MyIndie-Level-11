@@ -14,7 +14,7 @@ public class Rope : Interactable
     {
         if (!burning)
         {
-            if (Cheb(p, transform.position) < p.H + 0.75f && f.fuel > 0.12f) Ignite();
+            if (Cheb(p, transform.position) < p.H + 0.75f && f.fuel > 0.12f) { Ignite(); GameAudio.Play(Snd.RopeBurn, transform.position); } // звук только от звена, которое зажёг игрок, не от соседей
             return;
         }
         t += dt;

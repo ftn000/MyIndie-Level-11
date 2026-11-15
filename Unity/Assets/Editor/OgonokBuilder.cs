@@ -59,6 +59,7 @@ public static partial class OgonokBuilder
         BuildDecor(level);
         var player = BuildPlayer(zoneStarts[0]);
         BuildCamera(player);
+        BuildAudio();
         BuildVolume();
         var gm = new GameObject("GameManager").AddComponent<GameManager>();
         gm.player = player; gm.zoneStart = zoneStarts.ToArray();
@@ -215,7 +216,7 @@ public static partial class OgonokBuilder
         {
             foreach (var (id, a, c) in new[] { ("shelf1", 76, 83), ("shelf2", 128, 137) })
             {
-                var br = new GameObject("Bridge_" + id); br.transform.SetParent(l, false); br.AddComponent<Bridge>().id = id;
+                var br = new GameObject("Bridge_" + id); br.transform.SetParent(l, false); var bc = br.AddComponent<Bridge>(); bc.id = id; bc.kind = Bridge.Kind.Shelf;
                 for (int x = a; x <= c; x++) Cube("ShelfPlank", br.transform, C(x0 + x, y0 + 15), new Vector3(1, 1, Depth), mWood);
             }
         });
@@ -369,7 +370,7 @@ public static partial class OgonokBuilder
             extras.Add(l =>
             {
                 for (int r = 10; r <= 14; r++) { var rp = Cube("Rope", l, C(x0 + ropeX, y0 + r), new Vector3(0.2f, 1, 0.2f), mRope, false).AddComponent<Rope>(); rp.trigger = true; rp.id = id; }
-                var br = new GameObject("LogBridge_" + id); br.transform.SetParent(l, false); br.AddComponent<Bridge>().id = id;
+                var br = new GameObject("LogBridge_" + id); br.transform.SetParent(l, false); var bc = br.AddComponent<Bridge>(); bc.id = id; bc.kind = Bridge.Kind.Log;
                 Cube("LogPlank", br.transform, new Vector3(x0 + (a + c + 1) / 2f, H - (y0 + 17) - 0.5f, 0), new Vector3(c - a + 1, 1, Depth), mTrunk);
             });
         }
@@ -541,7 +542,7 @@ public static partial class OgonokBuilder
 
     static void BuildTiles(Transform level)
     {
-        var br = new GameObject("Bridge"); br.transform.SetParent(level, false); br.AddComponent<Bridge>().id = "wardrobe";
+        var br = new GameObject("Bridge"); br.transform.SetParent(level, false); var wb = br.AddComponent<Bridge>(); wb.id = "wardrobe"; wb.kind = Bridge.Kind.Wardrobe;
         var hatch = new GameObject("Hatch"); hatch.transform.SetParent(level, false); hatch.AddComponent<Hatch>().id = "hatch";
         for (int ty = 0; ty < H; ty++)
             for (int tx = 0; tx < W; tx++)
@@ -730,6 +731,7 @@ public static partial class OgonokBuilder
     {
         var root = new GameObject("Player"); root.transform.position = start;
         var f = root.AddComponent<Flame>(); var fp = root.AddComponent<FlamePlayer>(); fp.flame = f;
+        root.AddComponent<AudioListener>();
         var vis = art ? Sprite("FlameSprite", root.transform, wispSprite, mWisp, 1f) : Sprite("FlameSprite", root.transform, flameSprite, mSparkAdd, 1f); f.visual = vis.transform;
         if (art) vis.AddComponent<FaceFlip>().player = fp;
         var lt = new GameObject("FlameLight").AddComponent<Light>(); lt.transform.SetParent(root.transform, false);
@@ -769,7 +771,7 @@ public static partial class OgonokBuilder
     static void BuildCamera(FlamePlayer target)
     {
         var go = new GameObject("Main Camera") { tag = "MainCamera" };
-        var cam = go.AddComponent<Camera>(); go.AddComponent<AudioListener>();
+        var cam = go.AddComponent<Camera>(); // AudioListener на игроке (BuildPlayer): камера на z -13 глушила бы мировые звуки
         cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = new Color(0.02f, 0.025f, 0.04f);
         cam.fieldOfView = 40; cam.nearClipPlane = 0.3f; cam.farClipPlane = 120;
         go.AddComponent<UniversalAdditionalCameraData>().renderPostProcessing = true;

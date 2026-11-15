@@ -14,7 +14,7 @@ public class Boiler : MonoBehaviour
 
     void Ignite()
     {
-        Lit = true;
+        Lit = true; GameAudio.Play(Snd.BoilerIgnite, transform.position);
         foreach (var i in ice) if (i) i.Melt();
         foreach (var d in drips) d.enabled = false;
         foreach (var r in pipes) r.material.color = new Color(0.9f, 0.4f, 0.12f);

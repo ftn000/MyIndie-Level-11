@@ -18,7 +18,7 @@ public class Paper : Interactable
     public override void Tick(FlamePlayer p, Flame f, float dt)
     {
         if (Vector3.Distance(p.transform.position, transform.position) > 0.75f) return;
-        f.Add(0.3f); Fx.Spark(transform.position, 14, 4);
+        f.Add(0.3f); GameAudio.Play(Snd.Pickup, transform.position); Fx.Spark(transform.position, 14, 4);
         taken.Add(this); gameObject.SetActive(false);
     }
 }

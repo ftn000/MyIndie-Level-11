@@ -8,6 +8,7 @@ public class Updraft : Interactable
 
     void Start()
     {
+        GameAudio.LoopAt(gameObject, Snd.UpdraftLoop, transform.localScale);
         var mat = Resources.Load<Material>("SparkAdd");
         var go = new GameObject("UpdraftFx"); go.transform.SetParent(transform, false);
         var ps = go.AddComponent<ParticleSystem>();

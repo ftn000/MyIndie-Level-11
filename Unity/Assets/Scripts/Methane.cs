@@ -16,6 +16,6 @@ public class Methane : Interactable
         f.Add(0.2f);
         if (big) p.Kick(17f, (p.transform.position.x >= transform.position.x ? 1 : -1) * 7.5f);
         else p.Kick(13f);
-        Fx.Spark(transform.position, 20, 5); Destroy(gameObject);
+        Fx.Spark(transform.position, 20, 5); GameAudio.Play(Snd.Methane, transform.position); Destroy(gameObject);
     }
 }

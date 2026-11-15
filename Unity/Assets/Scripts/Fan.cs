@@ -14,6 +14,7 @@ public class Fan : Interactable
     ParticleSystem[] wind;
     float[] gustRate;
     Vector3 curtainScale, curtainPos;
+    bool wasWarn, wasGust;
 
     const float Period = 4.6f, WarnAt = 1.9f, GustAt = 2.9f, GustEnd = 4.5f;
     public float Phase => (Time.time + offset) % Period;
@@ -90,6 +91,13 @@ public class Fan : Interactable
             var e = wind[i].emission; e.rateOverTime = gustRate[i] * (gust ? 1f : warn ? 0.16f : 0f);
             var m = wind[i].main; m.startSpeed = gust ? 14f : 6f;
         }
+        // звук: на входе в предупреждение и в порыв, только если игрок на этом этаже (дальше 18 м GameAudio сам не играет)
+        if (Mathf.Abs(p.transform.position.y - transform.position.y) <= 8f)
+        {
+            if (warn && !wasWarn) GameAudio.Play(Snd.WindWarning, transform.position);
+            if (gust && !wasGust) { GameAudio.Play(Snd.WindGust, transform.position); if (curtain) GameAudio.Play(Snd.CurtainFlap, transform.position); }
+        }
+        wasWarn = warn; wasGust = gust;
         if (!gust) return;
         float fx = transform.position.x; var pp = p.transform.position;
         if (pp.x > fx || pp.x < fx - range || Mathf.Abs(pp.y - transform.position.y) > 8f) return; // этаж: под домом лежит канализация с теми же x

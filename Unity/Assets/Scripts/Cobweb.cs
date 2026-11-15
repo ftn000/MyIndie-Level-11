@@ -10,6 +10,6 @@ public class Cobweb : Interactable
         var b = new Bounds(transform.position, transform.localScale);
         b.Expand(2 * (p.H + 0.12f)); // игрок упирается в коллайдер на расстоянии H + Skin
         if (!b.Contains(p.transform.position)) return;
-        f.Add(-cost); Fx.Spark(transform.position, 10, 3); Destroy(gameObject);
+        f.Add(-cost); GameAudio.Play(Snd.Cobweb, transform.position); Fx.Spark(transform.position, 10, 3); Destroy(gameObject);
     }
 }

@@ -5,7 +5,9 @@ using UnityEngine;
 public class Bridge : MonoBehaviour
 {
     public const float FallTime = 0.4f, FallHeight = 4f;
+    public enum Kind { Wardrobe, Shelf, Log }
     public string id;
+    public Kind kind; // вид задаёт билдер (звук падения), не имя объекта
     float t = -1;
     public bool Landed => t >= FallTime;
     Vector3[] home;
@@ -25,6 +27,7 @@ public class Bridge : MonoBehaviour
             c.gameObject.SetActive(true); Fx.Steam(c.position, 3);
         }
         t = 0;
+        if (home.Length > 0) GameAudio.Play(kind == Kind.Log ? Snd.Log : kind == Kind.Shelf ? Snd.Shelf : Snd.Wardrobe, transform.GetChild(home.Length / 2).position - Vector3.up * FallHeight);
     }
 
     void Update()

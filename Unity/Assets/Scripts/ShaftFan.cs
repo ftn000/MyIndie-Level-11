@@ -13,7 +13,13 @@ public class ShaftFan : Interactable
 
     protected override void OnEnable() { base.OnEnable(); Rope.Burned += OnBurned; }
     protected override void OnDisable() { base.OnDisable(); Rope.Burned -= OnBurned; }
-    void OnBurned(string id) { if (id == beltId) Stopped = true; }
+    AudioSource loop;
+    void Start() => loop = GameAudio.LoopAt(gameObject, Snd.FanLoop, new Vector3(radius * 2, thickness, 1));
+    void OnBurned(string id)
+    {
+        if (id != beltId || Stopped) return;
+        Stopped = true; GameAudio.StopLoop(loop); GameAudio.Play(Snd.FanStop, transform.position);
+    }
 
     public bool Hits(Vector3 pos, float r)
     {
