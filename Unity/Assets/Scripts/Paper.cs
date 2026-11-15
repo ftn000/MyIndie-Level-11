@@ -5,6 +5,7 @@ using UnityEngine;
 // чекпоинта возвращается при респауне (Restore), взятое до него остаётся взятым (Commit на каждом чекпоинте).
 public class Paper : Interactable
 {
+    public float amount = 0.3f; public bool legendary; // P-17: легендарная пицца = полное топливо и золотой фейерверк
     static readonly List<Paper> taken = new();
 
     public static void Commit() => taken.Clear();
@@ -18,7 +19,7 @@ public class Paper : Interactable
     public override void Tick(FlamePlayer p, Flame f, float dt)
     {
         if (Vector3.Distance(p.transform.position, transform.position) > 0.75f) return;
-        f.Add(0.3f); GameAudio.Play(Snd.Pickup, transform.position); Fx.Spark(transform.position, 14, 4);
+        f.Add(amount); GameAudio.Play(Snd.Pickup, transform.position); Fx.Spark(transform.position, legendary ? 48 : 14, legendary ? 7 : 4);
         taken.Add(this); gameObject.SetActive(false);
     }
 }

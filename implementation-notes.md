@@ -190,3 +190,11 @@
 - **Тесты.** `KitchenIceMeltsFasterTheBiggerTheForm` (вместо `KitchenIceMeltsOnlyUnderBigForm`), `GaleFrontReachesFarPlayerWithDelay`; старые тесты ветра ставят фазу через `SetPhaseAtPlayer` (учёт Lag), смысл не менялся.
 - **Прогон.** `LevelTests` 88/88, Build Level 1 (batchmode) exit 0. В полном прогоне красные `AudioTests.BackgroundFollowsZone` и `HissFollowsFuelNotSize` (звук, P-14/15; на чистом main не проверял). Тест порыва использует синтетический `Fan` range 40 вне карты: лесной порыв закрыт укрытиями, открытой дальней точки там нет.
 - **Не сделано.** Звук порыва играет на позиции источника (как раньше): на 40 м GameAudio его не слышит (лимит 18 м). Глазами порыв в лесу не смотрел.
+
+## P-17. Пасхалки карточек джема (тюлень, пицца, лаборатория торта)
+- **Код.** `OgonokBuilderCards.cs` (partial), вызов `BuildCards(level)` в `BuildLevel` после `BuildDecor` (оба режима). Всё из примитивов без коллайдеров (хелпер `Prim`), кроме пиццы: это `Paper` с новым полем `amount` (по умолчанию 0.3, у пиццы 1) и флагом `legendary` (48 искр вместо 14). Тюлень покачивается компонентом `Bob`. Новые Lit-цвета: CakeCream, CakePink, Cherry, Glass, PizzaDough, Pepperoni, SealFur, SealDark.
+- **Где.** Лаборатория торта: кухня, x=75, пол y=81, z=1.8 (стол, торт, свечка-спрайт и лампа без `Candle`, микроскоп, колбы). Пицца: подвал, правая половина бочки 140..141 у выхода из погреба, мир (355.5, 67.3), золотой свет и редкие искры. Тюлень: канализация, остров 58..60 между плотами, x=60.4, z=1, y=25.3 (над уступом, перед полками декора, коллайдеров нет).
+- **Подсказки.** Три записи в `GameManager.Hints`: (75, 81.6), (59.5, 25.5), (355.5, 67.6). Подсказка кухни перекрыта «каплями» на x 77..83 (первая в списке побеждает).
+- **Тесты.** `PizzaRefuelsFullyAndSitsOnSolidSupport` (опора под пиццей, топливо → 1) и `PizzaReachableByNormalFormJumpWithoutWBoost` (бот прыгает с пола обычной формой без W/Shift). `LevelTests` целиком: 90/91 до фикса старта бота, затем оба теста пиццы зелёные; `FuelLastsBetweenRefuels` зелёный (пицца в нём считается как +0.3). Build Level 1 exit 0.
+- **Скриншоты.** `docs/p17-cakelab.png`, `p17-pizza.png`, `p17-seal.png` (OgonokShot).
+- **Не проверено.** AudioTests, WebGL-сборка, Level1Art (`BuildArt` вызывает те же `BuildCards`, но не собирал).

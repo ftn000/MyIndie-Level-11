@@ -57,6 +57,7 @@ public static partial class OgonokBuilder
         BuildTiles(level);
         foreach (var e in extras) e(level);
         BuildDecor(level);
+        BuildCards(level);
         var player = BuildPlayer(zoneStarts[0]);
         BuildCamera(player);
         BuildAudio();
