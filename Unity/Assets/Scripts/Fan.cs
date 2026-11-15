@@ -21,6 +21,9 @@ public class Fan : Interactable
     public bool Gusting => Phase > GustAt && Phase < GustEnd;
     public float TimeToGust => Gusting ? 0 : (GustAt - Phase + Period) % Period;
 
+    public float Speed => Mathf.Max(14f, range / 1.2f); // скорость фронта порыва и частиц: весь range за ~1.2 с
+    public float Lag(float x) => Mathf.Clamp(transform.position.x - x, 0f, range) / Speed; // через сколько фронт дойдёт до x
+
     void Awake()
     {
         Build();
@@ -77,6 +80,10 @@ public class Fan : Interactable
     {
         float ph = Phase;
         bool gust = Gusting, warn = ph > WarnAt && ph <= GustAt;
+        // для игрока цикл сдвинут на время, за которое фронт долетает до него: сила, расход и звук совпадают с видимыми частицами
+        float fx = transform.position.x; var pp = p.transform.position;
+        float lagPh = (Time.time + offset - Lag(pp.x) + Period) % Period;
+        bool gustP = lagPh > GustAt && lagPh < GustEnd, warnP = lagPh > WarnAt && lagPh <= GustAt;
         if (blades) blades.Rotate(0, 0, (gust ? 1200 : warn ? 500 : 60) * dt);
         if (curtainRest) { bool up = gust || warn; curtainRest.SetActive(!up); curtainWind.SetActive(up); }
         if (curtain)
@@ -89,19 +96,19 @@ public class Fan : Interactable
         for (int i = 0; i < wind.Length; i++)
         {
             var e = wind[i].emission; e.rateOverTime = gustRate[i] * (gust ? 1f : warn ? 0.16f : 0f);
-            var m = wind[i].main; m.startSpeed = gust ? 14f : 6f;
+            var m = wind[i].main; m.startSpeed = gust ? Speed : 6f;
+            m.startLifetime = gust ? range / Speed + 0.3f : 2f; // частицы долетают до конца зоны
         }
         // звук: на входе в предупреждение и в порыв, только если игрок на этом этаже (дальше 18 м GameAudio сам не играет)
         // на улице (без окна и шторы) те же клипы на тон ниже: дребезг рамы уходит в гул, предупреждение остаётся слышным
         bool window = curtain || curtainRest; float tone = window ? 1f : 0.7f;
         if (Mathf.Abs(p.transform.position.y - transform.position.y) <= 8f)
         {
-            if (warn && !wasWarn) GameAudio.Play(Snd.WindWarning, transform.position, tone);
-            if (gust && !wasGust) { GameAudio.Play(Snd.WindGust, transform.position, tone); if (curtain) GameAudio.Play(Snd.CurtainFlap, transform.position); }
+            if (warnP && !wasWarn) GameAudio.Play(Snd.WindWarning, transform.position, tone);
+            if (gustP && !wasGust) { GameAudio.Play(Snd.WindGust, transform.position, tone); if (curtain) GameAudio.Play(Snd.CurtainFlap, transform.position); }
         }
-        wasWarn = warn; wasGust = gust;
-        if (!gust) return;
-        float fx = transform.position.x; var pp = p.transform.position;
+        wasWarn = warnP; wasGust = gustP;
+        if (!gustP) return;
         if (pp.x > fx || pp.x < fx - range || Mathf.Abs(pp.y - transform.position.y) > 8f) return; // этаж: под домом лежит канализация с теми же x
         var o = pp + Vector3.right * p.H;
         float dist = fx - o.x;

@@ -6,7 +6,7 @@ using UnityEngine;
 // пока Игни в объёме льдины, она не твердеет. Лёд-преграда (refreeze = false) тает навсегда.
 public class Ice : Interactable
 {
-    public const float RefreezeWait = 3f, FreezeTime = 1f;
+    public const float RefreezeWait = 3f, FreezeTime = 1f, BigMelt = 0.6f, NormalMelt = 1.2f, SmallMelt = 2.5f;
     public bool heatOnly, thin, refreeze;
     float melt, broken = -1f; // broken < 0: цел; иначе секунды с момента таяния
     bool freezing; // звук намерзания уже сыграл в этом восстановлении
@@ -46,9 +46,12 @@ public class Ice : Interactable
 
     public override void Tick(FlamePlayer p, Flame f, float dt)
     {
-        if (Broken || heatOnly || Cheb(p, transform.position) > p.H + (thin ? 0.55f : 0.8f) || !(thin ? !f.IsSmall : f.IsBig) && !p.Dashing) return;
+        bool barrier = !thin && !refreeze; // преграду плавит любая форма, опору — только большая
+        if (Broken || heatOnly || Cheb(p, transform.position) > p.H + (thin ? 0.55f : 0.8f) || !(thin ? !f.IsSmall : barrier || f.IsBig) && !p.Dashing) return;
+        // melt копится только пока огонёк рядом; отошёл — не сбрасывается
         melt += dt;
         if (Random.value < 0.3f) Fx.Steam(transform.position, 1);
-        if (melt > (thin ? 0f : 0.6f)) { f.Add(-0.03f); Melt(); }
+        float need = thin ? 0f : !barrier || p.Dashing || f.IsBig ? BigMelt : f.IsSmall ? SmallMelt : NormalMelt; // рывок — как раньше (0.6 с)
+        if (melt > need) { f.Add(-0.03f); Melt(); }
     }
 }

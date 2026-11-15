@@ -183,3 +183,10 @@
 - `GameMenu` (IMGUI, на GameManager): главное меню (Играть, Управление, Настройки, Выход — скрыт в WebGL) и пауза по Esc (timeScale 0). Клавиатура и мышь, ввод в Update, работает при timeScale 0. Громкости музыки/звуков в PlayerPrefs.
 - Музыка «Fading Velvet Loneliness» через GameAudio: громко в меню, тихо в игре, уходит в тишину в финале; на паузе мир молчит (AudioListener.pause), музыка и UI-звуки ignoreListenerPause.
 - Мёрж без прогона тестов и WebGL — решение пользователя (дедлайн).
+
+## P-16 Лёд тает от любого огня; порыв ветра без задержки
+- **Лёд.** `Ice.Tick`: преграду (не thin, не refreeze, не heatOnly) плавит любая форма: большая 0.6 с, обычная 1.2 с, маленькая 2.5 с (`Ice.BigMelt/NormalMelt/SmallMelt`). Рывок — 0.6 с, как раньше. `melt` копится только пока огонёк рядом и не сбрасывается. Тонкий лёд, опора и лёд котла не менялись. Подсказка в кухне переписана.
+- **Порыв.** `Fan.Speed = max(14, range/1.2)` — скорость и фронта, и частиц; `startLifetime = range/Speed + 0.3`. Для игрока цикл сдвинут на `Fan.Lag(x) = (fx − x)/Speed`: толчок, расход, предупреждение и звук идут по сдвинутой фазе (`gustP/warnP`). Лопасти и штора — по несдвинутой. Окна дома (range 13–30) почти не меняются (speed 14–25).
+- **Тесты.** `KitchenIceMeltsFasterTheBiggerTheForm` (вместо `KitchenIceMeltsOnlyUnderBigForm`), `GaleFrontReachesFarPlayerWithDelay`; старые тесты ветра ставят фазу через `SetPhaseAtPlayer` (учёт Lag), смысл не менялся.
+- **Прогон.** `LevelTests` 88/88, Build Level 1 (batchmode) exit 0. В полном прогоне красные `AudioTests.BackgroundFollowsZone` и `HissFollowsFuelNotSize` (звук, P-14/15; на чистом main не проверял). Тест порыва использует синтетический `Fan` range 40 вне карты: лесной порыв закрыт укрытиями, открытой дальней точки там нет.
+- **Не сделано.** Звук порыва играет на позиции источника (как раньше): на 40 м GameAudio его не слышит (лимит 18 м). Глазами порыв в лесу не смотрел.
