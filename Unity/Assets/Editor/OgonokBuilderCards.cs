@@ -16,7 +16,7 @@ public static partial class OgonokBuilder
 
     static void BuildCards(Transform level)
     {
-        BuildCakeLab(level, 75f, FloorTop(12));
+        BuildCakeLab(level, 84f, FloorTop(12)); // между декором кухни (шкаф до x 82.2, рамка с 85.4) и правее ящика 72..73: иначе торт в них
         BuildPizza(level, C(214 + 141, 14 + 12) + new Vector3(0, -0.2f, 0)); // правая половина бочки 140..141 у выхода из погреба
         BuildSeal(level, 60.4f,FloorTop(56 + 12));                           // остров между плотами, за плоскостью игры
     }
