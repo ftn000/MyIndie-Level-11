@@ -19,7 +19,7 @@ public static partial class OgonokBuilder
     const int D1 = 90, D2 = 80, D3 = 110, D5 = 190, W = 442, H = 94;
     const float Depth = 4f;
     static char[,] g;
-    static Material mWall, mIce, mRope, mWax, mPaper, mWater, mGrate, mWood, mFire, mSparkAdd, mSteam, mDrop, mFurn, mWindow, mCurtain, mWeb, mLamp, mPipe, mRaft, mBlade, mBag, mBubble;
+    static Material mWall, mIce, mRope, mWax, mPaper, mWater, mGrate, mWood, mFire, mSparkAdd, mSteam, mDrop, mFurn, mWindow, mCurtain, mWeb, mLamp, mPipe, mRaft, mBlade, mBag;
     static Material mTrunk, mCrown, mSnowCap, mResin, mRune, mFar;
     static Material mHouse, mCellar, mSewer, mRock, mCloth; // P-13: поверхности '#' по зонам и ткань
     static Sprite flameSprite, dotSprite;
@@ -846,9 +846,7 @@ public static partial class OgonokBuilder
 
     static Material TexMat(string name, string shader, Texture2D tex, Color tint)
     {
-        var path = $"Assets/Materials/{name}.mat"; AssetDatabase.DeleteAsset(path);
-        var m = new Material(Shader.Find(shader)) { mainTexture = tex, color = tint };
-        AssetDatabase.CreateAsset(m, path); return m;
+        return SaveMat(new Material(Shader.Find(shader)) { mainTexture = tex, color = tint }, $"Assets/Materials/{name}.mat");
     }
 
     static void LoadArtPreview()
@@ -896,7 +894,12 @@ public static partial class OgonokBuilder
         var m = new Material(Shader.Find("Universal Render Pipeline/Lit"));
         m.SetColor("_BaseColor", c); m.SetFloat("_Smoothness", 0.12f);
         if (tex != null) { m.SetTexture("_BaseMap", GreyTex(tex)); m.SetTextureScale("_BaseMap", Vector2.one / period); }
-        // P-13: существующий .mat перезаписываем на месте — GUID тот же, сборка второй сцены не рвёт ссылки первой
+        return SaveMat(m, path);
+    }
+
+    // Существующий .mat перезаписываем на месте: GUID тот же, ссылки сцен и префабов (пузырь метана, искры) не рвутся между сборками.
+    static Material SaveMat(Material m, string path)
+    {
         var old = AssetDatabase.LoadAssetAtPath<Material>(path);
         if (!old) { AssetDatabase.CreateAsset(m, path); return m; }
         old.shader = m.shader; old.CopyPropertiesFromMaterial(m); old.shaderKeywords = m.shaderKeywords;
@@ -921,9 +924,8 @@ public static partial class OgonokBuilder
 
     static Material Shaded(string name, string shader, Sprite tex, Color tint)
     {
-        var path = $"Assets/Materials/{name}.mat"; AssetDatabase.DeleteAsset(path);
         var m = new Material(Shader.Find(shader)); m.mainTexture = tex.texture; m.color = tint;
-        AssetDatabase.CreateAsset(m, path); return m;
+        return SaveMat(m, $"Assets/Materials/{name}.mat");
     }
 
     static Sprite MakeSprite(string name, int n, System.Func<float, float, Color> f)
@@ -969,10 +971,9 @@ public static partial class OgonokBuilder
         mFurn = Lit("Furniture", new Color(0.95f, 0.88f, 0.8f), "T02");
         mWindow = Lit("Window", new Color(0.35f, 0.45f, 0.62f)); mCurtain = Lit("WindowCurtain", Color.white, "T07", 1);
         mRaft = Lit("Raft", Color.white, "T01"); mBlade = Lit("Blade", new Color(0.7f, 0.72f, 0.78f), "T06", 1); mBag = Lit("Bag", new Color(0.12f, 0.16f, 0.12f));
-        mBubble = Shaded("Bubble", "Mobile/Particles/Additive", dotSprite, new Color(0.4f, 1f, 0.55f, 1));
         mTrunk = Lit("Trunk", new Color(0.9f, 0.9f, 0.9f), "T08"); mCrown = Lit("Crown", new Color(0.8f, 0.9f, 0.85f), "T13"); mSnowCap = Lit("SnowCap", new Color(0.9f, 0.94f, 1f), "T10");
         mResin = Lit("Resin", new Color(0.95f, 0.6f, 0.15f)); mRune = Lit("Rune", new Color(0.6f, 0.62f, 0.7f), "T16");
-        mFar = new Material(Shader.Find("Universal Render Pipeline/Unlit")); mFar.color = new Color(0.16f, 0.18f, 0.24f); AssetDatabase.DeleteAsset("Assets/Materials/Far.mat"); AssetDatabase.CreateAsset(mFar, "Assets/Materials/Far.mat");
+        mFar = SaveMat(new Material(Shader.Find("Universal Render Pipeline/Unlit")) { color = new Color(0.16f, 0.18f, 0.24f) }, "Assets/Materials/Far.mat");
         mWeb = Lit("Cobweb", new Color(0.85f, 0.85f, 0.88f)); mLamp = Lit("Lamp", new Color(0.55f, 0.38f, 0.18f)); mPipe = Lit("Pipe", new Color(0.6f, 0.62f, 0.7f), "T06", 1);
 
         var drop = GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -983,7 +984,8 @@ public static partial class OgonokBuilder
         Object.DestroyImmediate(drop);
 
         if (art) LoadArtPreview();
-        var bub = Sprite("Bubble", null, dotSprite, mBubble, 0.8f); bub.AddComponent<Methane>();
+        var bub = Sprite("Bubble", null, dotSprite, mSparkAdd, 0.8f); bub.AddComponent<Methane>();
+        bub.GetComponent<SpriteRenderer>().color = new Color(0.4f, 1f, 0.55f); // общий SparkAdd + цвет вершин: свой Bubble.mat периодически рисовался розовым
         bubblePrefab = PrefabUtility.SaveAsPrefabAsset(bub, "Assets/Prefabs/Bubble.prefab");
         Object.DestroyImmediate(bub);
     }

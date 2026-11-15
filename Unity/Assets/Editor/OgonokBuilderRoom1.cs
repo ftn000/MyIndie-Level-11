@@ -12,9 +12,7 @@ public static partial class OgonokBuilder
     // Свой материал с текстурой на каждый слой: общий Sprites/Default с property block в превью путал текстуры (слои показывали задник)
     static Material R1Mat(Sprite sp)
     {
-        var path = $"Assets/Materials/R1_{sp.name}.mat"; AssetDatabase.DeleteAsset(path);
-        var m = new Material(Shader.Find("Sprites/Default")) { mainTexture = sp.texture };
-        AssetDatabase.CreateAsset(m, path); return m;
+        return SaveMat(new Material(Shader.Find("Sprites/Default")) { mainTexture = sp.texture }, $"Assets/Materials/R1_{sp.name}.mat");
     }
 
     // file | canvas w,h | alpha x,y,w,h | rect x,y,w,h (исходник) | sorting | fit (g среднее, w по ширине, h по высоте) | align (B низ, T верх)
