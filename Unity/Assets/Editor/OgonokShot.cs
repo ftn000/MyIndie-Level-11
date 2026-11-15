@@ -13,6 +13,19 @@ public static class OgonokShot
     public static void Shoot()
     {
         EditorSceneManager.OpenScene(Environment.GetEnvironmentVariable("OGONOK_SCENE") ?? "Assets/Scenes/Level1.unity");
+        // P-13: несколько кадров за один запуск: OGONOK_SHOTS="x,y,файл;x,y,файл"
+        var list = Environment.GetEnvironmentVariable("OGONOK_SHOTS");
+        if (string.IsNullOrEmpty(list)) { ShootOne(); return; }
+        foreach (var it in list.Split(';'))
+        {
+            var a = it.Split(',');
+            Environment.SetEnvironmentVariable("OGONOK_X", a[0]); Environment.SetEnvironmentVariable("OGONOK_Y", a[1]); Environment.SetEnvironmentVariable("OGONOK_OUT", a[2]);
+            ShootOne();
+        }
+    }
+
+    static void ShootOne()
+    {
         var fp = UnityEngine.Object.FindFirstObjectByType<FlamePlayer>();
         float x = Env("OGONOK_X", 3.5f), y = Env("OGONOK_Y", 1.6f);
         fp.transform.position = new Vector3(x, y, 0);

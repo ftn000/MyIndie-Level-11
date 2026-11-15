@@ -1,0 +1,3 @@
+Use case: precise-object-edit. Image 1 is the selected flat seamless BASE COLOR texture, not a game screenshot.
+Make ONLY the opposing borders tile continuously on BOTH axes. Correct the discontinuity at left/right and top/bottom while preserving the interior material structure, dominant grain direction, material scale, mean colour, low contrast and exact image dimensions. Blend the repaired edges naturally into the existing interior. Do not invent a new material or add a border.
+Preserve the square crop. Keep this a single flat texture filling the entire image with no perspective, shading, baked highlights, glow, text, labels, border, collage, object render or additional material maps. Return one corrected texture image.

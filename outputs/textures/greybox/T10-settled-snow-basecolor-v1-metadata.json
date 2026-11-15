@@ -1,0 +1,13 @@
+{
+  "id": "T10",
+  "file": "T10-settled-snow-basecolor-v1.png",
+  "generator": "built-in image_gen",
+  "width": 1254,
+  "height": 1254,
+  "sha256": "1fcd0c9d6896c328e161fa4737f060bb2df4a23ab51460121a01568b66cbfbf4",
+  "prompt_file": "T10-settled-snow-basecolor-v1-prompt.txt",
+  "visually_reviewed": true,
+  "tile_repeat_verified": false,
+  "unity_imported": false,
+  "notes": "Original PNG copied unchanged. Seamlessness and runtime appearance unverified."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "T16",
+  "file": "T16-natural-stone-basecolor-v1.png",
+  "generator": "built-in image_gen",
+  "width": 1254,
+  "height": 1254,
+  "sha256": "3d0fc48e4ab34d1748e289f83ddbda641cf871f4378e4a1adce8202b8b147fae",
+  "prompt_file": "T16-natural-stone-basecolor-v1-prompt.txt",
+  "visually_reviewed": true,
+  "tile_repeat_verified": false,
+  "unity_imported": false,
+  "notes": "Original PNG copied unchanged. Seamlessness and runtime appearance unverified."
+}
