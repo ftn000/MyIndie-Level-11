@@ -727,12 +727,45 @@ public static partial class OgonokBuilder
     }
 
     // ---------- игрок, камера, пост-обработка ----------
+    // Игни (Level1): тело — спрайт igni_idle (Art/Igni), за ним два аддитивных слоя пламени-капли; оживляет IgniVisual.
+    static GameObject BuildIgni(Transform parent, FlamePlayer fp)
+    {
+        // pivot в ногах (низ непрозрачного, центр тела по x) — посчитан по альфе PNG
+        var igni = IgniSprite("igni_idle", new Vector2(0.421f, 0.024f)); var run = IgniSprite("igni_run", new Vector2(0.629f, 0.022f));
+        var body = Sprite("FlameSprite", parent, igni, Shaded("Igni", "Sprites/Default", igni, Color.white), 1f);
+        var sr = body.GetComponent<SpriteRenderer>(); sr.sortingOrder = 2;
+        var glows = new Transform[2];
+        for (int i = 0; i < 2; i++)
+        {
+            var g = new GameObject("Glow" + i); g.transform.SetParent(body.transform, false);
+            var gs = g.AddComponent<SpriteRenderer>(); gs.sprite = flameSprite; gs.sharedMaterial = mSparkAdd; gs.sortingOrder = 1 - i;
+            glows[i] = g.transform;
+        }
+        var iv = body.AddComponent<IgniVisual>(); iv.player = fp; iv.body = sr; iv.glows = glows; iv.idle = igni; iv.run = run;
+        return body;
+    }
+
+    static Sprite IgniSprite(string n, Vector2 pivot)
+    {
+        var path = $"Assets/Art/Igni/{n}.png"; var imp = (TextureImporter)AssetImporter.GetAtPath(path);
+        var st = new TextureImporterSettings(); imp.ReadTextureSettings(st);
+        if (imp.textureType != TextureImporterType.Sprite || imp.spritePixelsPerUnit != 340 || st.spriteAlignment != (int)SpriteAlignment.Custom || st.spritePivot != pivot)
+        {
+            imp.textureType = TextureImporterType.Sprite; imp.spriteImportMode = SpriteImportMode.Single;
+            imp.ReadTextureSettings(st); st.spriteAlignment = (int)SpriteAlignment.Custom; st.spritePivot = pivot; imp.SetTextureSettings(st);
+            imp.spritePixelsPerUnit = 340; // шар тела ≈ хитбоксу при масштабе Flame.Apply
+            imp.alphaIsTransparency = true; imp.mipmapEnabled = false; imp.wrapMode = TextureWrapMode.Clamp;
+            imp.SaveAndReimport();
+        }
+        return AssetDatabase.LoadAssetAtPath<Sprite>(path);
+    }
+
     static FlamePlayer BuildPlayer(Vector3 start)
     {
         var root = new GameObject("Player"); root.transform.position = start;
         var f = root.AddComponent<Flame>(); var fp = root.AddComponent<FlamePlayer>(); fp.flame = f;
         root.AddComponent<AudioListener>();
-        var vis = art ? Sprite("FlameSprite", root.transform, wispSprite, mWisp, 1f) : Sprite("FlameSprite", root.transform, flameSprite, mSparkAdd, 1f); f.visual = vis.transform;
+        var vis = art ? Sprite("FlameSprite", root.transform, wispSprite, mWisp, 1f) : BuildIgni(root.transform, fp); f.visual = vis.transform;
         if (art) vis.AddComponent<FaceFlip>().player = fp;
         var lt = new GameObject("FlameLight").AddComponent<Light>(); lt.transform.SetParent(root.transform, false);
         lt.type = LightType.Point; lt.color = new Color(1, .6f, .25f); lt.shadows = LightShadows.Soft; lt.shadowStrength = 1f; lt.shadowBias = 0.05f;

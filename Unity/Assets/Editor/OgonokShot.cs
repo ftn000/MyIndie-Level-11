@@ -29,7 +29,8 @@ public static class OgonokShot
         var fp = UnityEngine.Object.FindFirstObjectByType<FlamePlayer>();
         float x = Env("OGONOK_X", 3.5f), y = Env("OGONOK_Y", 1.6f);
         fp.transform.position = new Vector3(x, y, 0);
-        fp.flame.size = Env("OGONOK_SIZE", 0.8f); fp.flame.Apply();
+        fp.flame.size = Env("OGONOK_SIZE", 0.8f); fp.flame.Apply(); // IgniVisual в edit mode не работает: ставим ноги на пол и позу вручную (OGONOK_RUN=1 — бег)
+        var iv = UnityEngine.Object.FindFirstObjectByType<IgniVisual>(); if (iv) { iv.transform.localPosition = Vector3.down * fp.H; if (Env("OGONOK_RUN", 0) == 1) iv.body.sprite = iv.run; }
         var cam = Camera.main;
         cam.transform.position = new Vector3(x, y + 3.4f, -13); cam.transform.rotation = Quaternion.Euler(11, 0, 0);
         if (Environment.GetEnvironmentVariable("OGONOK_WIND") == "1")

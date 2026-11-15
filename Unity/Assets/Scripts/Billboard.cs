@@ -1,5 +1,6 @@
 using UnityEngine;
 
+[DefaultExecutionOrder(100)] // после IgniVisual: он дописывает roll
 public class Billboard : MonoBehaviour
 {
     public float roll; // наклон в плоскости экрана, градусы (пламя гнётся от ветра)
