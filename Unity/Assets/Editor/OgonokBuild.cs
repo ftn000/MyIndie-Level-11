@@ -14,7 +14,7 @@ public static class OgonokBuild
         PlayerSettings.SetGraphicsAPIs(BuildTarget.WebGL, new[] { GraphicsDeviceType.OpenGLES3 });
         PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled; // сайты джемов часто не отдают нужные заголовки для gzip/brotli
         PlayerSettings.WebGL.decompressionFallback = false;
-        PlayerSettings.WebGL.dataCaching = false;
+        PlayerSettings.WebGL.dataCaching = false; PlayerSettings.WebGL.template = "PROJECT:Ogonyok"; // Assets/WebGLTemplates/Ogonyok: канвас на всё окно, без футера Unity
         var opts = new BuildPlayerOptions
         {
             scenes = new[] { "Assets/Scenes/Level1.unity" },
