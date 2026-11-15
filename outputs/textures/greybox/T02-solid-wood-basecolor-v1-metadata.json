@@ -1,0 +1,13 @@
+{
+  "id": "T02",
+  "file": "T02-solid-wood-basecolor-v1.png",
+  "generator": "built-in image_gen",
+  "width": 1254,
+  "height": 1254,
+  "sha256": "bddef375a048fe76dcf501408eb55993eaf6e9004e94d3e838e3225be300c818",
+  "prompt_file": "T02-solid-wood-basecolor-v1-prompt.txt",
+  "visually_reviewed": true,
+  "tile_repeat_verified": false,
+  "unity_imported": false,
+  "notes": "Original PNG copied unchanged. Seamlessness and runtime appearance unverified."
+}

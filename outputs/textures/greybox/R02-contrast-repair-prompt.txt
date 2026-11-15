@@ -1,0 +1,3 @@
+Use case: precise-object-edit. Image 1 is the selected flat seamless BASE COLOR texture, not a game screenshot.
+Reduce fine-detail contrast, prominent knots, scratches and distinctive stains while preserving the material identity, broad structure, grain direction, exact image dimensions and seamless continuation on both axes. Preserve the mean colour and albedo-only neutral appearance. Do not blur away the principal plank or masonry structure. Do not add sharpening halos.
+Preserve the square crop. Keep this a single flat texture filling the entire image with no perspective, shading, baked highlights, glow, text, labels, border, collage, object render or additional material maps. Return one corrected texture image.
