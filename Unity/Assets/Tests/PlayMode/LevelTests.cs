@@ -61,6 +61,8 @@ public class LevelTests
 
     // Ставит фазу цикла окна так, чтобы сейчас было ph секунд (порыв: 2.9..4.5).
     static void SetPhase(Fan f, float ph) => f.offset = ((ph - Time.time) % 4.6f + 4.6f) % 4.6f;
+    // Фаза с учётом запаздывания фронта порыва до игрока (ph — фаза, как будто фронт уже у игрока).
+    void SetPhaseAtPlayer(Fan f, float ph) => SetPhase(f, ph + f.Lag(p.transform.position.x));
 
     // ---------- старые механики, переехавшие в зоны ----------
 
@@ -183,19 +185,37 @@ public class LevelTests
         Assert.AreEqual(f0 + 0.3f, p.flame.fuel, 0.02f, "бумага +0.3 топлива"); Assert.AreEqual(Flame.BigSize, p.flame.size, 1e-6f);
     }
 
-    // Пороги по форме: кухонный лёд (только большой), тонкий лёд (только маленький), метан (откидывает только большой), решётка (только маленький).
-    [UnityTest] public IEnumerator KitchenIceMeltsOnlyUnderBigForm()
+    // Лёд-преграду плавит любая форма: большая 0.6 с, обычная 1.2 с, маленькая 2.5 с. Тонкий лёд держит только маленькую, метан откидывает только большой, решётка пропускает только маленького.
+    [UnityTest] public IEnumerator KitchenIceMeltsFasterTheBiggerTheForm()
     {
-        var ice = All<Ice>().Where(i => !i.heatOnly && !i.thin && InHouse(i)).OrderBy(i => i.transform.position.y).First(); var ip = ice.transform.position;
-        foreach (var f in new[] { Flame.Form.Small, Flame.Form.Normal })
+        foreach (var (f, aliveFrames, goneFrames) in new[] { (Flame.Form.Small, 60, 190), (Flame.Form.Normal, 40, 100), (Flame.Form.Big, 20, 60) })
         {
-            Tp(ip.x - 1.1f, ip.y + 0.5f, 1f, f);
-            yield return Run(60, _ => (0, false, false, false, f == Small));
-            Assert.IsTrue(ice != null, $"форма {f} лёд на кухне не плавит");
+            var ice = All<Ice>().Where(i => !i.heatOnly && !i.thin && !i.refreeze && InHouse(i)).OrderBy(i => i.transform.position.y).First(); var ip = ice.transform.position;
+            Tp(ip.x - 0.8f, ip.y + 0.5f, 1f, f); // маленькая форма дотягивается только вплотную
+            Func<int, (int, bool, bool, bool, bool)> hold = _ => (0, false, false, false, f == Small);
+            yield return Run(aliveFrames, hold);
+            Assert.IsTrue(ice != null, $"форма {f}: лёд ещё цел через {aliveFrames} кадров");
+            yield return Run(goneFrames - aliveFrames, hold, () => ice == null);
+            Assert.IsTrue(ice == null, $"форма {f}: лёд растаял за {goneFrames} кадров, size={p.flame.size}");
         }
-        Tp(ip.x - 1.1f, ip.y + 0.5f, 1f, Big);
-        yield return Run(90, Idle, () => ice == null);
-        Assert.IsTrue(ice == null, $"большая форма плавит лёд: dead={p.flame.Dead} p={p.transform.position} ice={ip} size={p.flame.size} fuel={p.flame.fuel}");
+    }
+
+    // Фронт порыва в лесу идёт ~1.2 с на весь range: у дальнего игрока сила начинается позже, у укрытого её нет совсем.
+    [UnityTest] public IEnumerator GaleFrontReachesFarPlayerWithDelay()
+    {
+        // синтетический вентилятор range 40 в пустом месте вне карты (лес закрыт укрытиями)
+        gm.mapRects = null;
+        var gale = new GameObject("TestGale").AddComponent<Fan>(); gale.range = 40f; gale.transform.position = new Vector3(1000f, 500f, 0f);
+        var floor = GameObject.CreatePrimitive(PrimitiveType.Cube); floor.transform.position = new Vector3(970f, 498.5f, 0f); floor.transform.localScale = new Vector3(60f, 1f, 5f);
+        float far = 965f; Tp(far, 500.6f, 0.8f); // 35 м: не на самой границе range, иначе толчок вынесет за зону
+        Assert.Greater(gale.Lag(far), 0.9f, "на 35 м фронт идёт больше 0.9 с");
+        SetPhase(gale, 2.9f); // порыв начался у источника сейчас
+        p.MoveInput(Dt, 0, false, false, false, 0);
+        yield return Run(30, Idle); // 0.5 с
+        Assert.AreEqual(0f, p.windX, "фронт ещё не дошёл");
+        yield return Run(60, Idle); // ~1.5 с
+        Assert.Less(p.windX, 0f, "фронт дошёл, толкает");
+        Object.Destroy(gale.gameObject); Object.Destroy(floor);
     }
 
     [UnityTest] public IEnumerator ThinIceHoldsOnlySmallForm()
@@ -234,13 +254,13 @@ public class LevelTests
     {
         var fan = Window("WindowFanB"); float fx = fan.transform.position.x;
         // открытое место: между последним укрытием (правый край x=62) и окном
-        Tp(fx - 3f, HouseY, 0.8f); SetPhase(fan, 3.0f);
+        Tp(fx - 3f, HouseY, 0.8f); SetPhaseAtPlayer(fan, 3.0f);
         p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.Less(p.windX, 0f, "в порыв на открытом месте дует");
         yield return Run(120, Idle);
         Assert.IsTrue(p.flame.Dead || p.flame.fuel < 0.5f, "порыв гасит");
         // укрытие: мебель между игроком и окном
-        Tp(fx - 9f, HouseY, 0.8f); p.flame.Revive(0.8f); SetPhase(fan, 3.0f);
+        Tp(fx - 9f, HouseY, 0.8f); p.flame.Revive(0.8f); SetPhaseAtPlayer(fan, 3.0f);
         float s0 = p.flame.fuel;
         yield return Run(60, Idle);
         Assert.AreEqual(0f, p.windX, "за мебелью не дует");
@@ -251,7 +271,7 @@ public class LevelTests
     [UnityTest] public IEnumerator WindowGustPushOnlyAtFirstWindow()
     {
         var fan = Window("WindowFanA"); float fx = fan.transform.position.x;
-        Tp(fx - 2.5f, HouseY, 0.8f); SetPhase(fan, 3.0f); // правее мебели, левее окна
+        Tp(fx - 2.5f, HouseY, 0.8f); SetPhaseAtPlayer(fan, 3.0f); // правее мебели, левее окна
         p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.Less(p.windX, 0f, "первое окно толкает");
         float s0 = p.flame.fuel;
@@ -264,7 +284,7 @@ public class LevelTests
     [UnityTest] public IEnumerator HouseWindowDoesNotBlowInSewer()
     {
         var fan = Window("WindowFanB"); float fx = fan.transform.position.x;
-        Tp(fx - 3f, 25.5f, 0.8f); SetPhase(fan, 3.0f);
+        Tp(fx - 3f, 25.5f, 0.8f); SetPhaseAtPlayer(fan, 3.0f);
         p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.AreEqual(0f, p.windX, "в порыв этажом ниже не дует");
         yield return null;
@@ -872,13 +892,13 @@ public class LevelTests
     {
         var gale = All<Fan>().Where(InForest).OrderBy(f => f.transform.position.x).First(); float fx = gale.transform.position.x;
         gm.JumpToZone(5);
-        Tp(fx - 3f, 3.6f, 0.8f); SetPhase(gale, 3.0f);
+        Tp(fx - 3f, 3.6f, 0.8f); SetPhaseAtPlayer(gale, 3.0f);
         p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.Less(p.windX, 0f, "на опушке без укрытия дует");
-        Tp(32f, 3.6f, 0.8f); SetPhase(gale, 3.0f); // между пнями 26 и 33
+        Tp(32f, 3.6f, 0.8f); SetPhaseAtPlayer(gale, 3.0f); // между пнями 26 и 33
         p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.AreEqual(0f, p.windX, "за пнём не дует");
-        Tp(10f, 81.6f, 0.8f); SetPhase(gale, 3.0f); // x в зоне действия, но в доме (окна дома там не достают)
+        Tp(10f, 81.6f, 0.8f); SetPhaseAtPlayer(gale, 3.0f); // x в зоне действия, но в доме (окна дома там не достают)
         p.MoveInput(Dt, 0, false, false, false, 0);
         Assert.AreNotEqual(-6.25f, p.windX, "ветер леса не дует в других зонах");
         yield return null;
