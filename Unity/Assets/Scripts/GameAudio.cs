@@ -97,7 +97,7 @@ public class GameAudio : MonoBehaviour
     {
         if (!music.clip) return;
         var st = gm.state;
-        float t = st == GameManager.State.Win || st == GameManager.State.Title || gm.paused ? MusicMenu
+        float t = st == GameManager.State.Win || st == GameManager.State.Title || st == GameManager.State.Story || gm.paused ? MusicMenu
             : st == GameManager.State.Finale ? (fireBack ? MusicMenu : MusicGame * (1 - silence)) : MusicGame;
         music.volume = Mathf.MoveTowards(music.volume, t * MusicMul, Time.unscaledDeltaTime * MusicMenu / 1.5f);
         if (!music.isPlaying) music.Play();

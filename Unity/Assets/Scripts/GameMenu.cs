@@ -104,7 +104,7 @@ public class GameMenu : MonoBehaviour
         switch (scr)
         {
             case Scr.Main:
-                if (i == 0) { gm.state = GameManager.State.Play; scr = Scr.None; }
+                if (i == 0) { gm.StartGame(); scr = Scr.None; }
                 else if (i == 1) Go(Scr.Controls);
                 else if (i == 2) Go(Scr.Settings);
                 else Application.Quit();

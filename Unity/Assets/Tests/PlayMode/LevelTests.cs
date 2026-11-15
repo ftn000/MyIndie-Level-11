@@ -906,8 +906,8 @@ public class LevelTests
         Assert.IsTrue(give.Done, "удержание E отдало пламя");
         Assert.AreEqual(GameManager.State.Finale, gm.state);
         float maxFade = 0;
-        for (int i = 0; i < 700 && gm.state != GameManager.State.Win; i++) { maxFade = Mathf.Max(maxFade, gm.fade); yield return null; }
-        Assert.AreEqual(GameManager.State.Win, gm.state, "финал дошёл до титра");
+        for (int i = 0; i < 700 && gm.state == GameManager.State.Finale; i++) { maxFade = Mathf.Max(maxFade, gm.fade); yield return null; }
+        Assert.AreEqual(GameManager.State.Story, gm.state, "после финала эпилог (текст), потом титр");
         Assert.Greater(maxFade, 0.9f, "экран гаснет почти в ноль");
         Assert.IsTrue(bf.Lit, "костёр вспыхнул");
         Assert.AreEqual(deaths, gm.Deaths, "отдать себя не смерть");

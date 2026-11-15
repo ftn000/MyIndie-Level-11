@@ -4,7 +4,7 @@ using UnityEngine.SceneManagement;
 
 public class GameManager : MonoBehaviour
 {
-    public enum State { Title, Play, Finale, Win }
+    public enum State { Title, Play, Finale, Win, Story } // Story в конце: номера сохранённых в сцене состояний не сдвигаются
     public static GameManager I;
     public FlamePlayer player;
     public State state;
@@ -98,7 +98,36 @@ public class GameManager : MonoBehaviour
 
     // Финал у костра: управление и таймер стоят, Bonfire ведёт экран.
     public void StartFinale() { if (Playing) state = State.Finale; }
-    public void FinishFinale() { state = State.Win; winT = 0; winTitle = "Не дай погаснуть"; }
+    public void FinishFinale() => Tell(Epilogue, 0.6f, () => { state = State.Win; winT = 0; winTitle = "Не дай погаснуть"; });
+
+    // Пролог и эпилог текстом (видео не успели): абзац за абзацем, Пробел/Enter/клик — дальше, Esc — пропустить.
+    static readonly string[] Prologue =
+    {
+        "Самая длинная ночь в году.",
+        "В деревне есть старый обычай: в эту ночь последний огонь из каждого дома несут к Большому костру на лесной поляне. Если костёр не загорится, зима не уйдёт.",
+        "Этот дом давно пуст. Нести огонь некому.",
+        "На стене висит детский рисунок: человечки несут огоньки к большому костру среди деревьев.",
+        "А в остывшем камине ещё тлеет последний уголёк.",
+        "Его зовут Игни. И он пойдёт сам.",
+    };
+    static readonly string[] Epilogue =
+    {
+        "Большой костёр горит. Свет волной идёт по поляне, и камни отвечают ему знаками.",
+        "Игни отдал огню всё, что у него было. Но отданный огонь не гаснет — он становится больше.",
+        "Зима уйдёт. Ночи станут короче.",
+        "А из большого пламени выпрыгнул маленький огонёк.",
+    };
+    string[] story; int storyI; float storyT, storyDim; System.Action storyDone;
+    void Tell(string[] lines, float dim, System.Action done) { story = lines; storyI = 0; storyT = 0; storyDim = dim; storyDone = done; state = State.Story; }
+    public void StartGame() => Tell(Prologue, 0.93f, () => state = State.Play);
+    void StoryInput(Keyboard k)
+    {
+        storyT += Time.unscaledDeltaTime;
+        bool next = (k != null && (k.spaceKey.wasPressedThisFrame || k.enterKey.wasPressedThisFrame)) || (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame);
+        bool skip = k != null && k.escapeKey.wasPressedThisFrame;
+        if (storyT < 0.4f || !(next || skip)) return; // не пролистать абзац тем же нажатием, которым его открыли
+        if (skip || ++storyI >= story.Length) { story = null; storyDone(); EatInput(); } else storyT = 0;
+    }
 
     // Страховка: если центр огонька дольше 0.2 с вне всех комнат уровня (с запасом 1 м), он гаснет и вернётся к чекпоинту.
     public Rect[] mapRects; // мировые прямоугольники комнат, задаёт OgonokBuilder
@@ -139,6 +168,7 @@ public class GameManager : MonoBehaviour
             if (outT > 0.2f) { outT = 0; player.flame.Kill(); }
         }
         var k = Keyboard.current;
+        if (state == State.Story) StoryInput(k);
         if (k != null)
         {
             if (k.rKey.wasPressedThisFrame || (state == State.Win && k.enterKey.wasPressedThisFrame))
@@ -166,6 +196,18 @@ public class GameManager : MonoBehaviour
         if (state == State.Title) return; // титул рисует GameMenu
         if (fade > 0) { GUI.color = new Color(0, 0, 0, fade); GUI.DrawTexture(full, Texture2D.whiteTexture); GUI.color = Color.white; }
         if (state == State.Finale) return;
+        if (state == State.Story && story != null)
+        {
+            GUI.color = new Color(0, 0, 0, storyDim); GUI.DrawTexture(full, Texture2D.whiteTexture);
+            style.wordWrap = true; style.fontSize = Screen.height / 24;
+            GUI.color = new Color(1, 1, 1, Mathf.Clamp01(storyT * 1.5f));
+            float w = Mathf.Min(Screen.width * 0.8f, Screen.height * 1.4f);
+            GUI.Label(new Rect((Screen.width - w) / 2, Screen.height * 0.3f, w, Screen.height * 0.35f), story[storyI], style);
+            GUI.color = new Color(1, 1, 1, 0.5f); style.fontSize = Screen.height / 40;
+            GUI.Label(new Rect(0, Screen.height * 0.85f, Screen.width, 40), "Пробел — дальше · Esc — пропустить", style);
+            GUI.color = Color.white; style.wordWrap = false;
+            return;
+        }
         if (state == State.Win)
         {
             style.fontSize = Screen.height / 9; GUI.Label(new Rect(0, Screen.height * .25f, Screen.width, 100), winTitle, style);
