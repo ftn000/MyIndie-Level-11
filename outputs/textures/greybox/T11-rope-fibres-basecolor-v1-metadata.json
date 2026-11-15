@@ -1,0 +1,13 @@
+{
+  "id": "T11",
+  "file": "T11-rope-fibres-basecolor-v1.png",
+  "generator": "built-in image_gen",
+  "width": 1254,
+  "height": 1254,
+  "sha256": "5ccf6124f888c071b0676cdf68dad7ee801eacd42c77dac824abd15a57bc7983",
+  "prompt_file": "T11-rope-fibres-basecolor-v1-prompt.txt",
+  "visually_reviewed": true,
+  "tile_repeat_verified": false,
+  "unity_imported": false,
+  "notes": "Original PNG copied unchanged. Seamlessness and runtime appearance unverified."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "T03",
+  "file": "T03-stone-masonry-basecolor-v1.png",
+  "generator": "built-in image_gen",
+  "width": 1254,
+  "height": 1254,
+  "sha256": "e42b927340883e30a9da8b01512921f6143f33b2afb93c18702db828c96506d3",
+  "prompt_file": "T03-stone-masonry-basecolor-v1-prompt.txt",
+  "visually_reviewed": true,
+  "tile_repeat_verified": false,
+  "unity_imported": false,
+  "notes": "Original PNG copied unchanged. Seamlessness and runtime appearance unverified."
+}

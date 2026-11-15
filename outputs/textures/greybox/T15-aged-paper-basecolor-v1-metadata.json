@@ -1,0 +1,13 @@
+{
+  "id": "T15",
+  "file": "T15-aged-paper-basecolor-v1.png",
+  "generator": "built-in image_gen",
+  "width": 1254,
+  "height": 1254,
+  "sha256": "c280d3af05c07d8af6945a9a2dd085c3f190ebd2e93beba063241128b92f1d5c",
+  "prompt_file": "T15-aged-paper-basecolor-v1-prompt.txt",
+  "visually_reviewed": true,
+  "tile_repeat_verified": false,
+  "unity_imported": false,
+  "notes": "Original PNG copied unchanged. Seamlessness and runtime appearance unverified."
+}

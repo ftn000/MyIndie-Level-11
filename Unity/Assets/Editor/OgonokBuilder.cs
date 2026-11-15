@@ -19,8 +19,9 @@ public static partial class OgonokBuilder
     const int D1 = 90, D2 = 80, D3 = 110, D5 = 190, W = 442, H = 94;
     const float Depth = 4f;
     static char[,] g;
-    static Material mStone, mWall, mIce, mRope, mWax, mPaper, mWater, mGrate, mWood, mFire, mSparkAdd, mSteam, mDrop, mFurn, mWindow, mCurtain, mWeb, mLamp, mPipe, mRaft, mBlade, mBag, mBubble;
+    static Material mWall, mIce, mRope, mWax, mPaper, mWater, mGrate, mWood, mFire, mSparkAdd, mSteam, mDrop, mFurn, mWindow, mCurtain, mWeb, mLamp, mPipe, mRaft, mBlade, mBag, mBubble;
     static Material mTrunk, mCrown, mSnowCap, mResin, mRune, mFar;
+    static Material mHouse, mCellar, mSewer, mRock, mCloth; // P-13: поверхности '#' по зонам и ткань
     static Sprite flameSprite, dotSprite;
     static GameObject dropPrefab, bubblePrefab;
     static readonly System.Collections.Generic.List<(string name, int x0, int y0, int x1, int y1, string hex)> rooms = new();
@@ -44,6 +45,7 @@ public static partial class OgonokBuilder
         art = withArt;
         foreach (var d in new[] { "Materials", "Art", "Prefabs", "Scenes" }) Directory.CreateDirectory(Path.Combine(Application.dataPath, d));
         MakeAssets();
+        BeginBoxMeshes();
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
         RenderSettings.ambientLight = new Color(0.02f, 0.022f, 0.035f);
@@ -63,6 +65,7 @@ public static partial class OgonokBuilder
         gm.mapRects = ZoneRects();
 
         if (art) BuildArtBackdrop();
+        EndBoxMeshes();
         EditorSceneManager.SaveScene(scene, art ? "Assets/Scenes/Level1Art.unity" : "Assets/Scenes/Level1.unity");
         if (!art) EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene("Assets/Scenes/Level1.unity", true) };
         AssetDatabase.SaveAssets();
@@ -504,9 +507,37 @@ public static partial class OgonokBuilder
         go.name = n; go.transform.SetParent(parent, false);
         go.transform.position = center; go.transform.localScale = scale;
         go.GetComponent<Renderer>().sharedMaterial = m;
+        if (m && m.GetTexture("_BaseMap")) go.GetComponent<MeshFilter>().sharedMesh = BoxMesh(scale, center);
         if (!collider) Object.DestroyImmediate(go.GetComponent<Collider>());
         return go;
     }
+
+    // P-13: меши с UV в метрах (BoxUV) — подассеты одного файла на сцену. Периоды текстур делят 8 м,
+    // поэтому центр куба по модулю 8 даёт тот же рисунок: одинаковые кубы делят меш.
+    static readonly System.Collections.Generic.Dictionary<string, Mesh> boxMeshes = new();
+    static string BoxMeshPath => art ? "Assets/Meshes/BoxesArt.asset" : "Assets/Meshes/Boxes.asset";
+    static void BeginBoxMeshes()
+    {
+        boxMeshes.Clear();
+        Directory.CreateDirectory(Path.Combine(Application.dataPath, "Meshes"));
+        AssetDatabase.DeleteAsset(BoxMeshPath);
+        AssetDatabase.CreateAsset(new Mesh { name = "Boxes" }, BoxMeshPath);
+    }
+    static void EndBoxMeshes() { AssetDatabase.SaveAssets(); Debug.Log($"Ogonok: {boxMeshes.Count} box meshes"); }
+    static Mesh BoxMesh(Vector3 size, Vector3 center)
+    {
+        static float M8(float v) => Mathf.Round(((v % 8f) + 8f) % 8f * 100f) / 100f;
+        var o = new Vector3(M8(center.x), M8(center.y), M8(center.z));
+        var key = $"{size.x:0.###}_{size.y:0.###}_{size.z:0.###}_{o.x}_{o.y}_{o.z}";
+        if (boxMeshes.TryGetValue(key, out var mesh)) return mesh;
+        mesh = BoxUV.Make(size, o); mesh.name = key;
+        AssetDatabase.AddObjectToAsset(mesh, BoxMeshPath);
+        return boxMeshes[key] = mesh;
+    }
+
+    // Материал '#' по зоне клетки (полосы как в ZoneRects): дом — доски, подвал — кирпич, сток и шахта — кладка, лес и поляна — камень.
+    static (string, Material) StoneOf(int tx, int ty) =>
+        ty <= 13 ? ("Floor", mHouse) : ty <= 29 ? ("Brick", mCellar) : ty <= 73 ? ("Stone", mSewer) : ("Rock", mRock);
 
     static void BuildTiles(Transform level)
     {
@@ -518,9 +549,9 @@ public static partial class OgonokBuilder
                 char c = g[ty, tx];
                 if (c == '#' || c == 'm' || c == 'n' || c == 'o')
                 {
-                    int e = tx; while (e + 1 < W && g[ty, e + 1] == c && !(art && e + 1 == 30)) e++; // art: у гостиной (x < 30) свои невидимые кубы, режем ряд на границе
+                    var (sn, sm) = c == '#' ? StoneOf(tx, ty) : c == 'm' ? ("Furniture", mFurn) : c == 'n' ? ("Trunk", mTrunk) : ("Crown", mCrown);
+                    int e = tx; while (e + 1 < W && g[ty, e + 1] == c && !(art && e + 1 == 30) && (c != '#' || StoneOf(e + 1, ty).Item2 == sm)) e++; // art: у гостиной (x < 30) свои невидимые кубы, режем ряд на границе
                     int len = e - tx + 1;
-                    var (sn, sm) = c == '#' ? ("Stone", mStone) : c == 'm' ? ("Furniture", mFurn) : c == 'n' ? ("Trunk", mTrunk) : ("Crown", mCrown);
                     Cube(sn, level, new Vector3(tx + len / 2f, H - 1 - ty + 0.5f, 0), new Vector3(len, 1, Depth), sm);
                     tx = e; continue;
                 }
@@ -530,7 +561,7 @@ public static partial class OgonokBuilder
                     case 'I': Cube("Ice", level, p, new Vector3(1, 1, 2), mIce).AddComponent<Ice>(); break;
                     case 'i': var ic = Cube("Ice", level, p, new Vector3(1, 1, 2), mIce).AddComponent<Ice>(); ic.thin = ic.refreeze = true; break;
                     case 'H': var hi = Cube("IceHot", level, p, new Vector3(1, 1, 2), mIce).AddComponent<Ice>(); hi.heatOnly = true; heatIce.Add(hi); break;
-                    case 'R': Cube("Curtain", level, p, new Vector3(0.8f, 1, 2), mRope).AddComponent<Rope>(); break;
+                    case 'R': Cube("Curtain", level, p, new Vector3(0.8f, 1, 2), mCloth).AddComponent<Rope>(); break;
                     case 'T': case 'L': case 'j': case 'U': case 'V': case 'J':
                         var rp = Cube("Rope", level, p, new Vector3(0.2f, 1, 0.2f), mRope, false).AddComponent<Rope>(); rp.trigger = true; rp.id = c == 'T' ? "wardrobe" : c == 'L' ? "hatch" : c == 'U' ? "shelf1" : c == 'V' ? "shelf2" : c == 'J' ? "fanbelt2" : "fanbelt"; break;
                     case 'v':
@@ -571,7 +602,7 @@ public static partial class OgonokBuilder
         if (!art) foreach (var (name, a, b, c2, d, hex) in rooms) // с артом тёмный фон комнат не нужен: за уровнем видны задники
         {
             ColorUtility.TryParseHtmlString(hex, out var col);
-            Cube("Room_" + name, level, new Vector3((a + c2 + 1) / 2f, H - (b + d + 1) / 2f, Depth / 2 + 0.5f), new Vector3(c2 - a + 1, d - b + 1, 1), Lit("Room" + rooms.FindIndex(r => r.name == name), col), false);
+            Cube("Room_" + name, level, new Vector3((a + c2 + 1) / 2f, H - (b + d + 1) / 2f, Depth / 2 + 0.5f), new Vector3(c2 - a + 1, d - b + 1, 1), Lit("Room" + rooms.FindIndex(r => r.name == name), Color.Lerp(col, Color.white, 0.35f), b <= 13 ? "T04" : b <= 29 ? "T05" : b <= 73 ? "T03" : null, b <= 13 ? 4 : 2), false);
         }
     }
 
@@ -650,7 +681,7 @@ public static partial class OgonokBuilder
         var root = new GameObject("Boiler"); root.transform.SetParent(level, false); root.transform.position = C(tx, ty);
         var give = root.AddComponent<GiveFlame>(); give.reach = 2.6f;
         var pipes = new System.Collections.Generic.List<Renderer>();
-        Cube("BoilerBody", root.transform, root.transform.position + new Vector3(0, 2.5f, 1.2f), new Vector3(5, 6, 0.8f), mFire, false);
+        Cube("BoilerBody", root.transform, root.transform.position + new Vector3(0, 2.5f, 1.2f), new Vector3(5, 6, 0.8f), mPipe, false); // P-13: котёл железный
         foreach (var (off, sc) in new[] { (new Vector3(0, 8.5f, 1.2f), new Vector3(0.5f, 6f, 0.5f)), (new Vector3(3.5f, 11.5f, 1.2f), new Vector3(8, 0.5f, 0.5f)), (new Vector3(-3.5f, 11.5f, 1.2f), new Vector3(8, 0.5f, 0.5f)) })
             pipes.Add(Cube("Pipe", root.transform, root.transform.position + off, sc, mPipe, false).GetComponent<Renderer>());
         var lt = new GameObject("Glow").AddComponent<Light>(); lt.transform.SetParent(root.transform, false); lt.transform.position = root.transform.position + new Vector3(0, 2.5f, -0.5f);
@@ -679,7 +710,7 @@ public static partial class OgonokBuilder
     {
         var cols = new[] { "#6b3f2a", "#3f6b52", "#7a5a2a", "#4a3f7a", "#7a3a4a" };
         var mats = new Material[cols.Length];
-        for (int i = 0; i < cols.Length; i++) { ColorUtility.TryParseHtmlString(cols[i], out var c); mats[i] = Lit("Deco" + i, c); }
+        for (int i = 0; i < cols.Length; i++) { ColorUtility.TryParseHtmlString(cols[i], out var c); mats[i] = Lit("Deco" + i, Color.Lerp(c, Color.white, 0.4f), "T02"); }
         uint s = 7; float R() { s = (uint)((ulong)s * 16807 % 2147483647); return s / 2147483647f; }
         void Range(float xa, float xb, float floorY, float maxH)
         {
@@ -823,12 +854,34 @@ public static partial class OgonokBuilder
     }
 
     // ---------- плейсхолдерные ассеты ----------
-    static Material Lit(string name, Color c)
+    // tex: T01..T16 из Art/Textures/Greybox (P-13), period: метров на один повтор рисунка (делит 8, см. BoxMesh).
+    static Material Lit(string name, Color c, string tex = null, float period = 2f)
     {
-        var path = $"Assets/Materials/{name}.mat"; AssetDatabase.DeleteAsset(path);
+        var path = $"Assets/Materials/{name}.mat";
         var m = new Material(Shader.Find("Universal Render Pipeline/Lit"));
         m.SetColor("_BaseColor", c); m.SetFloat("_Smoothness", 0.12f);
-        AssetDatabase.CreateAsset(m, path); return m;
+        if (tex != null) { m.SetTexture("_BaseMap", GreyTex(tex)); m.SetTextureScale("_BaseMap", Vector2.one / period); }
+        // P-13: существующий .mat перезаписываем на месте — GUID тот же, сборка второй сцены не рвёт ссылки первой
+        var old = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (!old) { AssetDatabase.CreateAsset(m, path); return m; }
+        old.shader = m.shader; old.CopyPropertiesFromMaterial(m); old.shaderKeywords = m.shaderKeywords;
+        Object.DestroyImmediate(m); EditorUtility.SetDirty(old); return old;
+    }
+
+    // Импорт текстуры грейбокса по INTEGRATION.md: Default, sRGB, Repeat, mipmaps, Trilinear.
+    static Texture2D GreyTex(string id)
+    {
+        var path = Directory.GetFiles(Path.Combine(Application.dataPath, "Art/Textures/Greybox"), id + "-*.png")[0];
+        path = "Assets" + path.Substring(Application.dataPath.Length).Replace('\\', '/');
+        var imp = (TextureImporter)AssetImporter.GetAtPath(path);
+        if (imp.textureType != TextureImporterType.Default || imp.wrapMode != TextureWrapMode.Repeat || !imp.sRGBTexture || !imp.mipmapEnabled
+            || imp.filterMode != FilterMode.Trilinear || imp.anisoLevel != 4 || imp.maxTextureSize != 1024)
+        {
+            imp.textureType = TextureImporterType.Default; imp.sRGBTexture = true; imp.wrapMode = TextureWrapMode.Repeat; imp.mipmapEnabled = true;
+            imp.filterMode = FilterMode.Trilinear; imp.anisoLevel = 4; imp.maxTextureSize = 1024; imp.isReadable = false;
+            imp.SaveAndReimport();
+        }
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
     }
 
     static Material Shaded(string name, string shader, Sprite tex, Color tint)
@@ -866,25 +919,26 @@ public static partial class OgonokBuilder
         mSparkAdd = Shaded("SparkAdd", "Mobile/Particles/Additive", dotSprite, Color.white);
         AssetDatabase.DeleteAsset("Assets/Resources/SparkAdd.mat"); Directory.CreateDirectory(Path.Combine(Application.dataPath, "Resources")); AssetDatabase.CopyAsset("Assets/Materials/SparkAdd.mat", "Assets/Resources/SparkAdd.mat"); // Fan грузит через Resources
         mSteam = Shaded("Steam", "Mobile/Particles/Alpha Blended", dotSprite, Color.white);
-        mStone = Lit("Stone", new Color(0.30f, 0.32f, 0.40f));
+        mHouse = Lit("HouseFloor", new Color(0.85f, 0.8f, 0.75f), "T01"); mCellar = Lit("CellarBrick", new Color(0.75f, 0.72f, 0.72f), "T05");
+        mSewer = Lit("SewerStone", new Color(0.7f, 0.74f, 0.8f), "T03"); mRock = Lit("ForestRock", new Color(0.75f, 0.78f, 0.85f), "T16", 4);
         mWall = Lit("Wall", new Color(0.09f, 0.1f, 0.15f));
-        mIce = Lit("Ice", new Color(0.55f, 0.78f, 0.92f)); mIce.SetFloat("_Smoothness", 0.8f);
-        mRope = Lit("Rope", new Color(0.62f, 0.45f, 0.28f));
+        mIce = Lit("Ice", new Color(0.8f, 0.92f, 1f), "T09", 1); mIce.SetFloat("_Smoothness", 0.8f);
+        mRope = Lit("Rope", new Color(1f, 0.95f, 0.9f), "T11", 1); mCloth = Lit("Cloth", Color.white, "T07", 1);
         mWax = Lit("Wax", new Color(0.92f, 0.89f, 0.8f));
-        mPaper = Lit("Paper", new Color(0.85f, 0.81f, 0.68f));
+        mPaper = Lit("Paper", Color.white, "T15", 1);
         mWater = Lit("Water", new Color(0.27f, 0.5f, 0.8f)); mWater.SetFloat("_Smoothness", 0.9f);
-        mGrate = Lit("Grate", new Color(0.18f, 0.19f, 0.26f));
-        mWood = Lit("Wood", new Color(0.54f, 0.4f, 0.26f));
-        mFire = Lit("Fireplace", new Color(0.29f, 0.25f, 0.22f));
+        mGrate = Lit("Grate", new Color(0.6f, 0.62f, 0.7f), "T06", 1);
+        mWood = Lit("Wood", new Color(0.95f, 0.9f, 0.85f), "T02");
+        mFire = Lit("Fireplace", new Color(0.9f, 0.85f, 0.82f), "T05");
         mDrop = Lit("Drop", new Color(0.44f, 0.69f, 0.91f));
-        mFurn = Lit("Furniture", new Color(0.42f, 0.30f, 0.20f));
-        mWindow = Lit("Window", new Color(0.35f, 0.45f, 0.62f)); mCurtain = Lit("WindowCurtain", new Color(0.55f, 0.28f, 0.30f));
-        mRaft = Lit("Raft", new Color(0.36f, 0.30f, 0.24f)); mBlade = Lit("Blade", new Color(0.30f, 0.32f, 0.36f)); mBag = Lit("Bag", new Color(0.12f, 0.16f, 0.12f));
+        mFurn = Lit("Furniture", new Color(0.95f, 0.88f, 0.8f), "T02");
+        mWindow = Lit("Window", new Color(0.35f, 0.45f, 0.62f)); mCurtain = Lit("WindowCurtain", Color.white, "T07", 1);
+        mRaft = Lit("Raft", Color.white, "T01"); mBlade = Lit("Blade", new Color(0.7f, 0.72f, 0.78f), "T06", 1); mBag = Lit("Bag", new Color(0.12f, 0.16f, 0.12f));
         mBubble = Shaded("Bubble", "Mobile/Particles/Additive", dotSprite, new Color(0.4f, 1f, 0.55f, 1));
-        mTrunk = Lit("Trunk", new Color(0.25f, 0.17f, 0.12f)); mCrown = Lit("Crown", new Color(0.08f, 0.2f, 0.16f)); mSnowCap = Lit("SnowCap", new Color(0.82f, 0.88f, 0.95f));
-        mResin = Lit("Resin", new Color(0.95f, 0.6f, 0.15f)); mRune = Lit("Rune", new Color(0.25f, 0.28f, 0.36f));
+        mTrunk = Lit("Trunk", new Color(0.9f, 0.9f, 0.9f), "T08"); mCrown = Lit("Crown", new Color(0.8f, 0.9f, 0.85f), "T13"); mSnowCap = Lit("SnowCap", new Color(0.9f, 0.94f, 1f), "T10");
+        mResin = Lit("Resin", new Color(0.95f, 0.6f, 0.15f)); mRune = Lit("Rune", new Color(0.6f, 0.62f, 0.7f), "T16");
         mFar = new Material(Shader.Find("Universal Render Pipeline/Unlit")); mFar.color = new Color(0.16f, 0.18f, 0.24f); AssetDatabase.DeleteAsset("Assets/Materials/Far.mat"); AssetDatabase.CreateAsset(mFar, "Assets/Materials/Far.mat");
-        mWeb = Lit("Cobweb", new Color(0.85f, 0.85f, 0.88f)); mLamp = Lit("Lamp", new Color(0.55f, 0.38f, 0.18f)); mPipe = Lit("Pipe", new Color(0.22f, 0.24f, 0.30f));
+        mWeb = Lit("Cobweb", new Color(0.85f, 0.85f, 0.88f)); mLamp = Lit("Lamp", new Color(0.55f, 0.38f, 0.18f)); mPipe = Lit("Pipe", new Color(0.6f, 0.62f, 0.7f), "T06", 1);
 
         var drop = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         Object.DestroyImmediate(drop.GetComponent<Collider>());

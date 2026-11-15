@@ -10,6 +10,7 @@ public class RaftStream : Interactable
     float timer;
     int n;
     static Material[] mats;
+    static Mesh[] meshes; // P-13: UV в метрах в осях плота, рисунок едет вместе с ним
 
     // имя, ширина, высота, цвет
     static readonly (string name, float w, float h, Color c)[] Kinds =
@@ -33,13 +34,14 @@ public class RaftStream : Interactable
         var k = Kinds[n++ % Kinds.Length];
         mats ??= new Material[Kinds.Length];
         int ki = (n - 1) % Kinds.Length;
-        if (!mats[ki] && raftMat) { mats[ki] = new Material(raftMat) { color = k.c }; }
+        if (!mats[ki] && raftMat) { mats[ki] = new Material(raftMat) { color = raftMat.mainTexture ? Color.Lerp(Color.white, k.c, 0.5f) : k.c }; }
         var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
         go.name = k.name; go.transform.SetParent(transform.parent, false);
         go.transform.localScale = new Vector3(k.w, k.h, 3f);
         float x0 = dir > 0 ? xa + k.w / 2 : xb - k.w / 2, end = dir > 0 ? xb - k.w / 2 : xa + k.w / 2;
         go.transform.position = new Vector3(x0 + dir * dist, top - k.h / 2, 0);
         if (mats[ki]) go.GetComponent<Renderer>().sharedMaterial = mats[ki];
+        if (raftMat && raftMat.mainTexture) { meshes ??= new Mesh[Kinds.Length]; go.GetComponent<MeshFilter>().sharedMesh = meshes[ki] ??= BoxUV.Make(go.transform.localScale, Vector3.zero); }
         var r = go.AddComponent<Raft>();
         r.Init(dir, speed, end, dist > 0 ? Raft.RiseTime : 0);
     }

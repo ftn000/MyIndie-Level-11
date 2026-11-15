@@ -1,0 +1,14 @@
+{
+  "id": "T01",
+  "file": "T01-wood-planks-basecolor-v1.png",
+  "generator": "built-in image_gen",
+  "width": 1254,
+  "height": 1254,
+  "sha256": "7a6f514f24d74366d2c0b66b4f750bd6e73cf6d5bd82b56aa1cafe0d8d03ee79",
+  "prompt_file": "T01-user-prompt.txt",
+  "visually_reviewed": true,
+  "tile_repeat_verified": false,
+  "unity_imported": false,
+  "notes": "Generated from the user-supplied T01 prompt. Original PNG copied without resizing or image edits. Seamlessness and runtime appearance remain unverified.",
+  "catalog_reference_prompt_file": "T01-wood-planks-basecolor-v1-prompt.txt"
+}

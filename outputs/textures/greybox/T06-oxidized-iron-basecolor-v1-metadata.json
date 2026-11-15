@@ -1,0 +1,13 @@
+{
+  "id": "T06",
+  "file": "T06-oxidized-iron-basecolor-v1.png",
+  "generator": "built-in image_gen",
+  "width": 1254,
+  "height": 1254,
+  "sha256": "6e0a424ff61794ab0dddd0740da5039c53dc1f687ef31b407fb60d9585c3e7ad",
+  "prompt_file": "T06-oxidized-iron-basecolor-v1-prompt.txt",
+  "visually_reviewed": true,
+  "tile_repeat_verified": false,
+  "unity_imported": false,
+  "notes": "Original PNG copied unchanged. Seamlessness and runtime appearance unverified."
+}
