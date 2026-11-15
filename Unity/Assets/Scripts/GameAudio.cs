@@ -6,7 +6,7 @@ public enum Snd
 {
     Jump, Dash, TransformBig, TransformSmall, TransformNormal, Death, Respawn, Pickup, Candle, BoilerGive, BoilerIgnite, BonfireIgnite,
     WindWarning, WindGust, CurtainFlap, DropWater, DropHit, SnowHit, IceMelt, IceRefreeze, RopeBurn, Wardrobe, Shelf, Log, Hatch, Cobweb,
-    Raft, Methane, FanStop, FanLoop, UpdraftLoop, CrackleLoop, HissLoop, AmbHouse, AmbSewer, AmbShaft, AmbForest,
+    Raft, Methane, FanStop, FanLoop, UpdraftLoop, CrackleLoop, HissLoop, UiClick, UiPause, AmbHouse, AmbSewer, AmbShaft, AmbForest,
 }
 
 // Весь звук игры. Один компонент на сцену (создаёт OgonokBuilder): клипы привязаны через Slot, поиска по строкам и Resources нет.
@@ -17,6 +17,9 @@ public class GameAudio : MonoBehaviour
     [Serializable] public class Slot { public AudioClip[] clips; public float volume = 1, minGap; public bool spatial; }
 
     public static GameAudio I;
+    public static float MusicMul = 1, SfxMul = 1; // настройки игрока 0..1, PlayerPrefs
+    public AudioClip musicClip;
+    public const float MusicMenu = 0.6f, MusicGame = 0.18f;
     public Slot[] slots;
     public float sfxVolume = 1, ambVolume = 0.5f, fireVolume = 1; // shortcut: группы громкости вместо AudioMixer, подключить микшер, когда появятся настройки
     public const float MinDist = 3f, MaxDist = 18f;
@@ -27,7 +30,7 @@ public class GameAudio : MonoBehaviour
     readonly float[] lastT = new float[Enum.GetValues(typeof(Snd)).Length];
     readonly int[] counts = new int[Enum.GetValues(typeof(Snd)).Length];
     readonly AudioSource[] amb = new AudioSource[2];
-    AudioSource crackle, hiss, give;
+    AudioSource crackle, hiss, give, music, ui;
     bool crackleOn, hissOn, giveWant;
     object giveOwner;
     int cur;
@@ -47,9 +50,13 @@ public class GameAudio : MonoBehaviour
     void Awake()
     {
         I = this;
+        MusicMul = PlayerPrefs.GetFloat("vol_music", 1); SfxMul = PlayerPrefs.GetFloat("vol_sfx", 1);
         for (int i = 0; i < Pool; i++) pool[i] = MakeSource("Sfx" + i, false);
         crackle = MakeSource("Crackle", true); hiss = MakeSource("Hiss", true); give = MakeSource("GiveFlame", false);
         amb[0] = MakeSource("AmbA", true); amb[1] = MakeSource("AmbB", true);
+        music = MakeSource("Music", true); ui = MakeSource("Ui", false);
+        music.ignoreListenerPause = ui.ignoreListenerPause = true; // пауза глушит мир, не музыку и меню
+        music.clip = musicClip; if (musicClip) music.Play();
         crackle.clip = Clip(Snd.CrackleLoop); hiss.clip = Clip(Snd.HissLoop); give.clip = Clip(Snd.BoilerGive);
     }
 
@@ -70,6 +77,31 @@ public class GameAudio : MonoBehaviour
     // ---------- API механик ----------
 
     public static void Play(Snd id, Vector3 pos = default, float pitch = 1f) { if (I) I.PlayAt(id, pos, pitch); }
+
+    public static void SetVolume(bool musicVol, float v)
+    {
+        v = Mathf.Clamp01(v);
+        if (musicVol) MusicMul = v; else SfxMul = v;
+        PlayerPrefs.SetFloat(musicVol ? "vol_music" : "vol_sfx", v);
+    }
+
+    // Звук меню: идёт и на паузе.
+    public static void Ui(Snd id)
+    {
+        var a = I; var c = a ? a.Clip(id) : null;
+        if (c) a.ui.PlayOneShot(c, a.Vol(id) * SfxMul);
+    }
+
+    // Музыка: меню/пауза/победа 0.6, игра 0.18, финал уходит в тишину вместе с остальным. Фейд ~1.5 с на unscaled времени.
+    void MusicUpdate(GameManager gm)
+    {
+        if (!music.clip) return;
+        var st = gm.state;
+        float t = st == GameManager.State.Win || st == GameManager.State.Title || gm.paused ? MusicMenu
+            : st == GameManager.State.Finale ? (fireBack ? MusicMenu : MusicGame * (1 - silence)) : MusicGame;
+        music.volume = Mathf.MoveTowards(music.volume, t * MusicMul, Time.unscaledDeltaTime * MusicMenu / 1.5f);
+        if (!music.isPlaying) music.Play();
+    }
 
     // Удержание E у котла/костра: звук идёт, пока идёт прогресс; owner различает котлы между собой.
     public static void Hold(object owner, bool on)
@@ -117,7 +149,7 @@ public class GameAudio : MonoBehaviour
         var src = pool[k]; startT[k] = Time.time;
         src.Stop();
         src.clip = s.clips[s.clips.Length == 1 ? 0 : UnityEngine.Random.Range(0, s.clips.Length)];
-        src.volume = s.volume * sfxVolume;
+        src.volume = s.volume * sfxVolume * SfxMul;
         src.pitch = pitch * (s.minGap > 0 ? UnityEngine.Random.Range(0.95f, 1.05f) : 1f);
         src.spatialBlend = s.spatial ? 1 : 0;
         src.transform.position = s.spatial ? new Vector3(pos.x, pos.y, 0) : Listener;
@@ -141,6 +173,7 @@ public class GameAudio : MonoBehaviour
     void Update()
     {
         var gm = GameManager.I; var f = Flame.I;
+        if (gm) MusicUpdate(gm);
         if (!gm || !f || !gm.player) return;
         float dt = Time.deltaTime;
         bool on = gm.state != GameManager.State.Title; // до первого нажатия тишина: в браузере AudioContext оживает от нажатия
@@ -151,21 +184,21 @@ public class GameAudio : MonoBehaviour
         if (amb[cur].clip != clip) { cur ^= 1; var n = amb[cur]; n.clip = clip; n.volume = 0; if (clip) n.Play(); }
         for (int i = 0; i < 2; i++)
         {
-            float target = i == cur && amb[i].clip ? v * ambVolume * (on ? 1 : 0) * (1 - silence) : 0;
+            float target = i == cur && amb[i].clip ? v * ambVolume * SfxMul * (on ? 1 : 0) * (1 - silence) : 0;
             amb[i].volume = Mathf.MoveTowards(amb[i].volume, target, dt * (silence > 0 ? 2f : 1f));
             if (i != cur && amb[i].volume <= 0 && amb[i].isPlaying) amb[i].Stop();
         }
 
         // огонь Игни: треск по размеру формы, тревожное шипение по топливу; стоп на Dead
         bool alive = on && !f.Dead;
-        float fireK = fireVolume * (1 - (fireBack ? 0 : silence));
+        float fireK = fireVolume * SfxMul * (1 - (fireBack ? 0 : silence));
         Fire(crackle, ref crackleOn, alive, alive ? Mathf.Lerp(0.25f, 0.6f, f.size) * Vol(Snd.CrackleLoop) * fireK : 0, 3 * dt);
         crackle.pitch = Mathf.Lerp(1.15f, 0.9f, f.size);
         Fire(hiss, ref hissOn, alive && f.fuel < Flame.GuttersBelow, alive ? f.Weak * Vol(Snd.HissLoop) * fireK : 0, 1.5f * dt);
 
         // E у котла
         if (f.Dead) giveWant = false;
-        give.volume = Mathf.MoveTowards(give.volume, giveWant ? Vol(Snd.BoilerGive) * sfxVolume : 0, 8 * dt);
+        give.volume = Mathf.MoveTowards(give.volume, giveWant ? Vol(Snd.BoilerGive) * sfxVolume * SfxMul : 0, 8 * dt);
         if (!giveWant && give.volume <= 0 && give.isPlaying) give.Stop();
 
         var pp = f.transform.position;
@@ -175,7 +208,7 @@ public class GameAudio : MonoBehaviour
             if (!l.src) { loops.RemoveAt(i); continue; }
             var cp = new Bounds(l.src.transform.parent.position, l.size).ClosestPoint(pp); cp.z = 0;
             l.src.transform.position = cp;
-            float target = !l.stopping && on && ((Vector2)cp - (Vector2)pp).magnitude < MaxDist && !OtherZone(l.src.transform.parent.position) ? l.vol * sfxVolume : 0;
+            float target = !l.stopping && on && ((Vector2)cp - (Vector2)pp).magnitude < MaxDist && !OtherZone(l.src.transform.parent.position) ? l.vol * sfxVolume * SfxMul : 0;
             l.src.volume = Mathf.MoveTowards(l.src.volume, target, dt * 2);
             if (target > 0 && !l.src.isPlaying) l.src.Play();
             else if (l.src.volume <= 0 && l.src.isPlaying) l.src.Stop();

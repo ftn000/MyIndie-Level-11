@@ -41,6 +41,8 @@ public static partial class OgonokBuilder
         (Snd.UpdraftLoop, 0.5f, true, 0, new[] { "updraft_loop" }),
         (Snd.CrackleLoop, 1f, false, 0, new[] { "igni_crackle_loop" }),
         (Snd.HissLoop, 0.6f, false, 0, new[] { "igni_hiss_low" }),
+        (Snd.UiClick, 0.7f, false, 0, new[] { "ui_click1" }),
+        (Snd.UiPause, 0.7f, false, 0, new[] { "ui_pause_open" }),
         (Snd.AmbHouse, 1f, false, 0, new[] { "house_cold_loop" }),
         (Snd.AmbSewer, 1f, false, 0, new[] { "sewer_water_loop" }),
         (Snd.AmbShaft, 1f, false, 0, new[] { "shaft_air_loop" }),
@@ -51,6 +53,7 @@ public static partial class OgonokBuilder
     {
         var ga = new GameObject("GameAudio").AddComponent<GameAudio>();
         ga.slots = new GameAudio.Slot[System.Enum.GetValues(typeof(Snd)).Length];
+        ga.musicClip = LoadClip("Assets/Audio/Fading Velvet Loneliness.mp3", true);
         foreach (var (id, vol, spatial, gap, names) in audioTable)
         {
             string dir = id >= Snd.AmbHouse ? "Ambience" : "SFX";
