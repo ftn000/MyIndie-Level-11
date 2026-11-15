@@ -1187,6 +1187,28 @@ public class LevelTests
     }
     float Tp_Brightness(float fuel) { p.flame.fuel = fuel; return p.flame.Brightness; }
 
+    // ---------- P-17: легендарная пицца ----------
+    Paper Pizza() => All<Paper>().Single(x => x.legendary);
+
+    [UnityTest] public IEnumerator PizzaRefuelsFullyAndSitsOnSolidSupport()
+    {
+        var pz = Pizza(); var pp = pz.transform.position;
+        Assert.IsTrue(Physics.Raycast(pp + Vector3.up * 0.1f, Vector3.down, out var hit, 0.8f), "под пиццей твёрдая опора");
+        Assert.IsFalse(hit.collider.isTrigger);
+        Tp(pp.x, pp.y, 0.1f); p.MoveInput(Dt, 0, false, false, false, 0);
+        Assert.IsFalse(pz.gameObject.activeSelf, "пицца подобрана"); Assert.AreEqual(1f, p.flame.fuel, 1e-3f);
+        yield return null;
+    }
+
+    [UnityTest] public IEnumerator PizzaReachableByNormalFormJumpWithoutWBoost()
+    {
+        var pz = Pizza(); var pp = pz.transform.position;
+        Tp(pp.x - 2.4f, pp.y - 1.7f, 0.5f); // пол погреба слева от бочки, правее провала 342..352
+        yield return Run(30, Idle); // приземлиться
+        yield return Run(240, i => (1, true, i % 25 == 0, false, false), () => !pz.gameObject.activeSelf); // идём вправо, прыгаем
+        Assert.IsFalse(pz.gameObject.activeSelf, $"пицца достижима обычной формой: p={p.transform.position}");
+    }
+
     // ---------- P-5: C. подпитки возвращаются при смерти ----------
 
     Paper FirstHousePaper() => All<Paper>().Where(InHouse).OrderBy(x => x.transform.position.x).First();
