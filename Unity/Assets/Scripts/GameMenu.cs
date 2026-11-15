@@ -15,7 +15,7 @@ public class GameMenu : MonoBehaviour
 
     static readonly string[] ControlLines =
     {
-        "A D / ← →  —  идти", "Пробел  —  прыжок, в потоке держать для подъёма", "W / ↑  —  пламя больше", "S / ↓  —  пламя меньше",
+        "A D / стрелки  —  идти", "Пробел  —  прыжок, в потоке держать для подъёма", "W / стрелка вверх  —  пламя больше", "S / стрелка вниз  —  пламя меньше",
         "Shift / X  —  вспышка-рывок", "E (держать)  —  отдать пламя", "Esc  —  пауза",
     };
 
@@ -59,7 +59,7 @@ public class GameMenu : MonoBehaviour
         if (!open)
         {
             scr = Scr.None;
-            if (esc && gm.state == GameManager.State.Play) { gm.SetPause(true); GameAudio.Ui(Snd.UiPause); Go(Scr.Pause); }
+            if (esc && gm.Playing) { gm.SetPause(true); GameAudio.Ui(Snd.UiPause); Go(Scr.Pause); } // Playing учитывает съеденный кадр: Esc, пропустивший пролог, паузу не открывает
             return;
         }
         if (scr == Scr.None) Go(Home);
@@ -123,6 +123,7 @@ public class GameMenu : MonoBehaviour
     void OnGUI()
     {
         if (scr == Scr.None) return;
+        GUI.skin.font = GameManager.UiFont;
         GUI.depth = -10;
         st ??= new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Italic };
         int H = Screen.height;
