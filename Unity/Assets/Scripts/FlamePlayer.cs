@@ -54,7 +54,7 @@ public class FlamePlayer : MonoBehaviour
 
         if (dashP && dashCd <= 0 && flame.fuel > 0.16f)
         {
-            flame.Add(-0.15f); dashT = 0.18f; dashCd = 0.5f; Fx.Spark(transform.position, 16, 7);
+            flame.Add(-0.15f); GameAudio.Play(Snd.Dash); dashT = 0.18f; dashCd = 0.5f; Fx.Spark(transform.position, 16, 7);
         }
         flame.wind = windX;
         float size0 = flame.size;
@@ -73,7 +73,7 @@ public class FlamePlayer : MonoBehaviour
             vel.x += (dir * Speed - vel.x) * Mathf.Min(1, (grounded ? 18 : 9) * dt);
             vel.y = Mathf.Max(vel.y - Gravity * dt, -MaxFall);
             if (inUpdraft && held) vel.y = Mathf.Min(vel.y + 100f * dt, 5.3f);
-            if (buf > 0 && coyote > 0) { vel.y = 10.9f + 4.06f * flame.size; buf = coyote = 0; }
+            if (buf > 0 && coyote > 0) { vel.y = 10.9f + 4.06f * flame.size; buf = coyote = 0; GameAudio.Play(Snd.Jump); }
             if (!held && vel.y > 4.4f && !inUpdraft) vel.y -= 68.75f * dt;
         }
 

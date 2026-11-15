@@ -17,11 +17,11 @@ public class GiveFlame : Interactable
     {
         if (Done) return;
         near = Cheb(p, transform.position) <= reach; weak = !all && f.fuel < cost + minLeft;
-        if (!near || !p.giveHeld || weak) { t = 0; return; }
-        t += dt;
+        if (!near || !p.giveHeld || weak) { t = 0; GameAudio.Hold(this, false); return; }
+        t += dt; GameAudio.Hold(this, true);
         if (UnityEngine.Random.value < 0.5f) Fx.Spark(p.transform.position, 1, 2f);
         if (t < hold) return;
-        Done = true;
+        Done = true; GameAudio.Hold(this, false);
         if (all) f.Surrender(); else f.Add(-cost);
         Fx.Spark(transform.position, 30, 5);
         Given?.Invoke();

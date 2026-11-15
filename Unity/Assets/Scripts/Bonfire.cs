@@ -19,12 +19,12 @@ public class Bonfire : MonoBehaviour
         if (t < 0) return;
         var gm = GameManager.I; var p = gm.player;
         t += Time.deltaTime;
-        if (t < IgniteAt) { gm.fade = Mathf.SmoothStep(0, 0.97f, t / FadeEnd); return; } // потом ~1 с тишины в темноте
+        if (t < IgniteAt) { gm.fade = Mathf.SmoothStep(0, 0.97f, t / FadeEnd); GameAudio.Silence(gm.fade / 0.97f); return; } // потом ~1 с тишины в темноте
         if (!Lit) Ignite();
         float k = Mathf.SmoothStep(0, 1, (t - IgniteAt) / (RiseEnd - IgniteAt)); // свет идёт волной от костра
         glow.range = 32 * k; glow.intensity = 26 * k; gm.fade = 0.97f * (1 - k);
         if (t < RiseEnd) return;
-        if (!hopping) { hopping = true; p.flame.Revive(0.25f); }
+        if (!hopping) { hopping = true; p.flame.Revive(0.25f); GameAudio.FireBack(); GameAudio.Play(Snd.Respawn); }
         float u = Mathf.Clamp01((t - RiseEnd) / (HopEnd - RiseEnd));
         var from = transform.position + Vector3.up * 1.2f; var to = transform.position + new Vector3(3.2f, p.H, 0);
         p.Respawn(Vector3.Lerp(from, to, u) + Vector3.up * Mathf.Sin(Mathf.PI * u) * 2.5f);
@@ -33,7 +33,7 @@ public class Bonfire : MonoBehaviour
 
     void Ignite()
     {
-        Lit = true;
+        Lit = true; GameAudio.Play(Snd.BonfireIgnite);
         if (snow) snow.SetActive(false);
         bigFlame.SetActive(true); glow.enabled = true;
         foreach (var r in runes) r.material.color = new Color(1f, 0.62f, 0.2f);

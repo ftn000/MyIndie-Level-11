@@ -10,6 +10,7 @@ public class Raft : Interactable
     public bool Sinking { get; private set; }
     public bool Risen => age >= RiseTime;
     float age, sinkT, baseY;
+    bool wasRiding;
 
     void Awake() => baseY = transform.position.y; // центр на плаву: задаётся до AddComponent
 
@@ -28,6 +29,8 @@ public class Raft : Interactable
         age += dt;
         float old = transform.position.x, nx = old, pp = p.transform.position.x;
         bool riding = Risen && !Sinking && p.Grounded && Mathf.Abs(pp - old) < transform.localScale.x / 2 + p.H && Mathf.Abs(p.transform.position.y - p.H - Top) < 0.15f;
+        if (riding && !wasRiding) GameAudio.Play(Snd.Raft, transform.position);
+        wasRiding = riding;
         if (!Sinking)
         {
             nx = old + dir * speed * dt;

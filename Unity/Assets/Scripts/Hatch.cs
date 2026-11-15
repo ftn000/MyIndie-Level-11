@@ -13,7 +13,7 @@ public class Hatch : MonoBehaviour
     void OnBurned(string rope)
     {
         if (rope != id || Open) return;
-        Open = true;
+        Open = true; GameAudio.Play(Snd.Hatch, transform.position);
         foreach (Transform c in transform) { c.gameObject.SetActive(false); Fx.Steam(c.position, 3); }
     }
 }

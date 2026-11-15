@@ -47,7 +47,11 @@ public class Flame : MonoBehaviour
     public void Burn(float perSecond, float dt) { Add(-perSecond * dt); if (UnityEngine.Random.value < .5f) Fx.Steam(transform.position + Vector3.down * Radius, 1); }
     public void Warm() => warm = true;
     public void Cold(float mult) => cold = Mathf.Max(cold, mult); // множитель расхода от среды (лес), действует один кадр
-    public void StepForm(int d) => CurrentForm = (Form)Mathf.Clamp((int)CurrentForm + d, 0, 2); // Small=0, Normal=1, Big=2
+    public void StepForm(int d) // Small=0, Normal=1, Big=2
+    {
+        var old = CurrentForm; CurrentForm = (Form)Mathf.Clamp((int)old + d, 0, 2);
+        if (CurrentForm != old) GameAudio.Play(CurrentForm == Form.Big ? Snd.TransformBig : CurrentForm == Form.Small ? Snd.TransformSmall : Snd.TransformNormal);
+    }
     // Мгновенно (респаун, тесты): выбранная форма и её размер.
     public void SetForm(Form f) { CurrentForm = f; size = SizeOf(f); }
     // Финал: отдал себя костру. Это не смерть: Died не вызывается, респауна и счётчика нет.
@@ -68,6 +72,7 @@ public class Flame : MonoBehaviour
     {
         if (Dead) return;
         Dead = true; fuel = 0; Fx.Steam(transform.position, 8);
+        GameAudio.Play(Snd.Death);
         Died?.Invoke();
     }
 

@@ -17,7 +17,7 @@ public class Candle : Interactable
         float d = Vector3.Distance(p.transform.position, c);
         if (!lit && d < 0.95f)
         {
-            lit = true; Apply();
+            lit = true; Apply(); GameAudio.Play(Snd.Candle, c);
             GameManager.I.SetCheckpoint(transform.position + Vector3.up * 0.5f);
             f.Add(0.5f); Fx.Spark(c, 24, 4);
         }
