@@ -998,6 +998,17 @@ public class LevelTests
         Assert.AreEqual(ip.y + 0.5f + p.H, p.transform.position.y, 0.1f, "стоит на льду");
     }
 
+    // Лёд-мост тает и от маленького: не сразу (держит пару секунд), но стоять на нём вечно нельзя.
+    [UnityTest] public IEnumerator SmallFlameMeltsBridgeIceIfStandsLong()
+    {
+        var ice = FirstThinIce(); var ip = ice.transform.position;
+        Tp(ip.x, OnTop(ice, Flame.SmallSize), 0.3f, Small);
+        yield return Run(60, _ => (0, false, false, false, true)); // 1 с
+        Assert.IsFalse(ice.Broken, "за секунду маленький лёд не растопил");
+        yield return Run(120, _ => (0, false, false, false, true)); // ещё 2 с: всего больше SmallMelt
+        Assert.IsTrue(ice.Broken, "простоял дольше SmallMelt — лёд растаял");
+    }
+
     [UnityTest] public IEnumerator KitchenIceStillMeltsSlowly()
     {
         var ice = All<Ice>().Where(i => !i.heatOnly && !i.thin && InHouse(i)).OrderBy(i => i.transform.position.y).First();

@@ -1,7 +1,7 @@
 using UnityEngine;
 
-// Лёд тает от большой формы или от рывка. heatOnly: только от котла (Melt).
-// thin: тонкий лёд проваливается сразу при касании (не плавится 0.6 с), держит только маленькую форму.
+// Лёд тает от огня: большая форма и рывок за 0.6 с, обычная за 1.2 с, маленькая за 2.5 с стоя рядом. heatOnly: только от котла (Melt).
+// thin: тонкий лёд под не-маленькой формой проваливается сразу; маленькую держит, пока она не простоит на нём SmallMelt.
 // refreeze: лёд-опора (над водой). Не уничтожается, а выключается и через RefreezeWait + FreezeTime намерзает обратно;
 // пока Игни в объёме льдины, она не твердеет. Лёд-преграда (refreeze = false) тает навсегда.
 public class Ice : Interactable
@@ -46,12 +46,13 @@ public class Ice : Interactable
 
     public override void Tick(FlamePlayer p, Flame f, float dt)
     {
-        bool barrier = !thin && !refreeze; // преграду плавит любая форма, опору — только большая
-        if (Broken || heatOnly || Cheb(p, transform.position) > p.H + (thin ? 0.55f : 0.8f) || !(thin ? !f.IsSmall : barrier || f.IsBig) && !p.Dashing) return;
-        // melt копится только пока огонёк рядом; отошёл — не сбрасывается
+        // любой огонь плавит любой лёд (кроме котлового); маленький — медленно. Тонкий под не-маленьким проваливается сразу.
+        bool near = Cheb(p, transform.position) <= p.H + (thin ? 0.55f : 0.8f);
+        if (Broken || heatOnly) return;
+        if (!near) { if (refreeze) melt = 0; return; } // мост: отошёл — прогресс сбрасывается, проходы не копятся; преграда помнит
         melt += dt;
         if (Random.value < 0.3f) Fx.Steam(transform.position, 1);
-        float need = thin ? 0f : !barrier || p.Dashing || f.IsBig ? BigMelt : f.IsSmall ? SmallMelt : NormalMelt; // рывок — как раньше (0.6 с)
+        float need = thin && (!f.IsSmall || p.Dashing) ? 0f : p.Dashing || f.IsBig ? BigMelt : f.IsSmall ? SmallMelt : NormalMelt;
         if (melt > need) { f.Add(-0.03f); Melt(); }
     }
 }
