@@ -8,7 +8,12 @@ public class GameManager : MonoBehaviour
     public static GameManager I;
     public FlamePlayer player;
     public State state;
-    public bool Playing => state == State.Play;
+    public bool paused;
+    int eatFrame = -1;
+    // Кадр, в котором меню приняло нажатие, ввод игрока не получает (иначе Пробел пункта = прыжок).
+    public bool Playing => state == State.Play && !paused && Time.frameCount != eatFrame;
+    public void EatInput() => eatFrame = Time.frameCount;
+    public void SetPause(bool p) { paused = p; Time.timeScale = p ? 0 : 1; AudioListener.pause = p; EatInput(); }
 
     Vector3 cp;
     float deadT, playT, winT;
@@ -51,6 +56,8 @@ public class GameManager : MonoBehaviour
     void Awake()
     {
         I = this;
+        Time.timeScale = 1; AudioListener.pause = false; // перезагрузка сцены с паузы
+        gameObject.AddComponent<GameMenu>();
         Application.targetFrameRate = 60;
         QualitySettings.SetQualityLevel(QualitySettings.names.Length - 1); // PC-профиль URP: тени от дополнительных источников
     }
@@ -134,8 +141,7 @@ public class GameManager : MonoBehaviour
         var k = Keyboard.current;
         if (k != null)
         {
-            if (state == State.Title && (k.spaceKey.wasPressedThisFrame || k.enterKey.wasPressedThisFrame)) state = State.Play;
-            else if (k.rKey.wasPressedThisFrame || (state == State.Win && k.enterKey.wasPressedThisFrame))
+            if (k.rKey.wasPressedThisFrame || (state == State.Win && k.enterKey.wasPressedThisFrame))
                 SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             var fk = new[] { k.f1Key, k.f2Key, k.f3Key, k.f4Key, k.f5Key, k.f6Key };
@@ -157,15 +163,7 @@ public class GameManager : MonoBehaviour
         style.fontSize = Screen.height / 28;
         style.normal.textColor = new Color(1f, .82f, .58f);
         var full = new Rect(0, 0, Screen.width, Screen.height);
-        if (state == State.Title)
-        {
-            GUI.color = new Color(0, 0, 0, .6f); GUI.DrawTexture(full, Texture2D.whiteTexture); GUI.color = Color.white;
-            style.fontSize = Screen.height / 8; GUI.Label(new Rect(0, Screen.height * .25f, Screen.width, Screen.height * .2f), "Огонёк", style);
-            style.fontSize = Screen.height / 28;
-            GUI.Label(new Rect(0, Screen.height * .5f, Screen.width, 40), "Самая длинная ночь. Холодный дом. Дойди до большого костра.", style);
-            if (Mathf.Sin(Time.time * 3) > -.3f) GUI.Label(new Rect(0, Screen.height * .62f, Screen.width, 40), "Нажми Пробел", style);
-            return;
-        }
+        if (state == State.Title) return; // титул рисует GameMenu
         if (fade > 0) { GUI.color = new Color(0, 0, 0, fade); GUI.DrawTexture(full, Texture2D.whiteTexture); GUI.color = Color.white; }
         if (state == State.Finale) return;
         if (state == State.Win)
