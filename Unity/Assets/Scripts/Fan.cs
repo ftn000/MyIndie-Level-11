@@ -92,10 +92,12 @@ public class Fan : Interactable
             var m = wind[i].main; m.startSpeed = gust ? 14f : 6f;
         }
         // звук: на входе в предупреждение и в порыв, только если игрок на этом этаже (дальше 18 м GameAudio сам не играет)
+        // на улице (без окна и шторы) те же клипы на тон ниже: дребезг рамы уходит в гул, предупреждение остаётся слышным
+        bool window = curtain || curtainRest; float tone = window ? 1f : 0.7f;
         if (Mathf.Abs(p.transform.position.y - transform.position.y) <= 8f)
         {
-            if (warn && !wasWarn) GameAudio.Play(Snd.WindWarning, transform.position);
-            if (gust && !wasGust) { GameAudio.Play(Snd.WindGust, transform.position); if (curtain) GameAudio.Play(Snd.CurtainFlap, transform.position); }
+            if (warn && !wasWarn) GameAudio.Play(Snd.WindWarning, transform.position, tone);
+            if (gust && !wasGust) { GameAudio.Play(Snd.WindGust, transform.position, tone); if (curtain) GameAudio.Play(Snd.CurtainFlap, transform.position); }
         }
         wasWarn = warn; wasGust = gust;
         if (!gust) return;

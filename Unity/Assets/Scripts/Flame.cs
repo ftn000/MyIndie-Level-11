@@ -68,11 +68,12 @@ public class Flame : MonoBehaviour
         if (fuel <= 0) Kill();
     }
 
-    public void Kill()
+    // sound: чем озвучить смерть (в воде: шипение капли вместо обычного угасания)
+    public void Kill(Snd sound = Snd.Death)
     {
         if (Dead) return;
         Dead = true; fuel = 0; Fx.Steam(transform.position, 8);
-        GameAudio.Play(Snd.Death);
+        GameAudio.Play(sound, transform.position); // позиция нужна 3D-звукам (DropHit)
         Died?.Invoke();
     }
 

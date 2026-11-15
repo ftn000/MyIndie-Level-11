@@ -18,16 +18,8 @@ public class Drop : MonoBehaviour
         }
         else if (transform.position.y < -5f || Physics.CheckSphere(transform.position, 0.1f, ~0, QueryTriggerInteraction.Ignore))
         {
-            if (cost >= 0.1f && OnPuddle(transform.position)) GameAudio.Play(Snd.DropWater, transform.position); // не каждый Destroy: сухой пол и снег молчат
+            if (cost >= 0.1f && transform.position.y >= -5f) GameAudio.Play(Snd.DropWater, transform.position); // капля о пол или лужу; снег и вылет за мир молчат
             Destroy(gameObject);
         }
-    }
-
-    // Лужа без коллайдера: капля садится на пол под ней. position лужи = верх пола, ширина 1 м.
-    static bool OnPuddle(Vector3 p)
-    {
-        foreach (var i in Interactable.All)
-            if (i is Puddle && Mathf.Abs(i.transform.position.x - p.x) < 0.6f && Mathf.Abs(i.transform.position.y - p.y) < 0.6f) return true;
-        return false;
     }
 }

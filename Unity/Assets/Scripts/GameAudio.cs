@@ -69,7 +69,7 @@ public class GameAudio : MonoBehaviour
 
     // ---------- API механик ----------
 
-    public static void Play(Snd id, Vector3 pos = default) { if (I) I.PlayAt(id, pos); }
+    public static void Play(Snd id, Vector3 pos = default, float pitch = 1f) { if (I) I.PlayAt(id, pos, pitch); }
 
     // Удержание E у котла/костра: звук идёт, пока идёт прогресс; owner различает котлы между собой.
     public static void Hold(object owner, bool on)
@@ -104,12 +104,12 @@ public class GameAudio : MonoBehaviour
 
     Vector3 Listener => Flame.I ? Flame.I.transform.position : Vector3.zero;
 
-    void PlayAt(Snd id, Vector3 pos)
+    void PlayAt(Snd id, Vector3 pos, float pitch)
     {
         var s = SlotOf(id);
         if (s == null || s.clips == null || s.clips.Length == 0) return;
         if (s.minGap > 0 && Time.time < lastT[(int)id] + s.minGap) return;
-        if (s.spatial && (new Vector2(pos.x, pos.y) - (Vector2)Listener).magnitude > MaxDist) return; // не слышно: голос не тратим
+        if (s.spatial && ((new Vector2(pos.x, pos.y) - (Vector2)Listener).magnitude > MaxDist || OtherZone(pos))) return; // не слышно: голос не тратим
         lastT[(int)id] = Time.time; counts[(int)id]++;
         int k = 0;
         for (int i = 1; i < Pool; i++) if (startT[i] < startT[k]) k = i; // самый давний (свободные имеют меньшее startT, если не играют)
@@ -118,7 +118,7 @@ public class GameAudio : MonoBehaviour
         src.Stop();
         src.clip = s.clips[s.clips.Length == 1 ? 0 : UnityEngine.Random.Range(0, s.clips.Length)];
         src.volume = s.volume * sfxVolume;
-        src.pitch = s.minGap > 0 ? UnityEngine.Random.Range(0.95f, 1.05f) : 1f;
+        src.pitch = pitch * (s.minGap > 0 ? UnityEngine.Random.Range(0.95f, 1.05f) : 1f);
         src.spatialBlend = s.spatial ? 1 : 0;
         src.transform.position = s.spatial ? new Vector3(pos.x, pos.y, 0) : Listener;
         src.Play();
@@ -127,12 +127,10 @@ public class GameAudio : MonoBehaviour
     // ---------- петли огня, фон, локальные петли ----------
 
     // Зона по реальной позиции игрока в габаритах зон (mapRects идут в порядке зон 1..N, этажи не пересекаются по y). Вне всех: прежняя.
-    int ZoneAt(GameManager gm)
-    {
-        var rs = gm.mapRects; var p = (Vector2)gm.player.transform.position;
-        for (int i = 0; rs != null && i < rs.Length; i++) if (rs[i].Contains(p)) return i + 1;
-        return Zone;
-    }
+    int ZoneAt(GameManager gm) { int z = gm.ZoneOf(gm.player.transform.position); return z != 0 ? z : Zone; }
+
+    // Источник из другой зоны (соседний этаж за полом) не слышен: иначе винт шахты звучит в доме. Вне зон (0) не режем.
+    bool OtherZone(Vector3 pos) { var gm = GameManager.I; int z = gm ? gm.ZoneOf(pos) : 0; return z != 0 && Zone != 0 && z != Zone; }
 
     (AudioClip clip, float vol) AmbFor(int z)
     {
@@ -177,7 +175,7 @@ public class GameAudio : MonoBehaviour
             if (!l.src) { loops.RemoveAt(i); continue; }
             var cp = new Bounds(l.src.transform.parent.position, l.size).ClosestPoint(pp); cp.z = 0;
             l.src.transform.position = cp;
-            float target = !l.stopping && on && ((Vector2)cp - (Vector2)pp).magnitude < MaxDist ? l.vol * sfxVolume : 0;
+            float target = !l.stopping && on && ((Vector2)cp - (Vector2)pp).magnitude < MaxDist && !OtherZone(l.src.transform.parent.position) ? l.vol * sfxVolume : 0;
             l.src.volume = Mathf.MoveTowards(l.src.volume, target, dt * 2);
             if (target > 0 && !l.src.isPlaying) l.src.Play();
             else if (l.src.volume <= 0 && l.src.isPlaying) l.src.Stop();

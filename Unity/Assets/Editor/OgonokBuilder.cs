@@ -595,7 +595,7 @@ public static partial class OgonokBuilder
                         int ep = tx; while (ep + 1 < W && g[ty, ep + 1] == 'P') ep++;
                         var pit = new GameObject("Pit"); pit.transform.SetParent(level, false);
                         pit.transform.position = new Vector3(tx + (ep - tx + 1) / 2f, p.y, 0); pit.transform.localScale = new Vector3(ep - tx + 1, 1, 3);
-                        pit.AddComponent<Pit>();
+                        pit.AddComponent<Pit>().water = ty >= 56; // как вода ниже: сток, шахта, лес
                         if (ty >= 56) Cube("Water", level, pit.transform.position + Vector3.down * 0.05f, new Vector3(ep - tx + 1, 0.9f, 2.5f), mWater, false); // вода канализации и шахты; провал спальни без воды
                         break;
                 }

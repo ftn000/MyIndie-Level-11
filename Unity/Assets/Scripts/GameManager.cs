@@ -103,8 +103,29 @@ public class GameManager : MonoBehaviour
         return false;
     }
 
+    // Зона 1..N по габаритам mapRects (в порядке зон), 0 вне всех. Zone: текущая зона игрока, вне всех остаётся прежней.
+    public int ZoneOf(Vector2 p)
+    {
+        for (int i = 0; mapRects != null && i < mapRects.Length; i++) if (mapRects[i].Contains(p)) return i + 1;
+        return 0;
+    }
+    public int Zone { get; private set; }
+
+    // Частицы чужих зон (потоки, ветер, пена) просвечивают сквозь пол/стену соседнего этажа: прячем их рендер, симуляция идёт.
+    void CullZoneFx()
+    {
+        foreach (var r in FindObjectsByType<ParticleSystemRenderer>(FindObjectsSortMode.None))
+        {
+            if (r.transform.IsChildOf(player.transform)) continue;
+            int z = ZoneOf(r.transform.position);
+            r.enabled = z == 0 || z == Zone;
+        }
+    }
+
     void Update()
     {
+        int zn = ZoneOf(player.transform.position);
+        if (zn != 0 && zn != Zone) { Zone = zn; CullZoneFx(); }
         if (state == State.Play && !player.flame.Dead)
         {
             outT = InMap(player.transform.position) ? 0 : outT + Time.deltaTime;

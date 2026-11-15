@@ -8,9 +8,9 @@ public static partial class OgonokBuilder
     // (событие, громкость, 3D, мин. интервал между запусками, клипы; первые из SFX, Amb* из Ambience). Громкости на слух не подбирались, см. implementation-notes.
     static readonly (Snd id, float vol, bool spatial, float gap, string[] clips)[] audioTable =
     {
-        (Snd.Jump, 0.7f, false, 0, new[] { "igni_jump", "igni_jump2" }),
+        (Snd.Jump, 0.7f, false, 0, new[] { "igni_jump" }),
         (Snd.Dash, 0.8f, false, 0, new[] { "igni_dash" }),
-        (Snd.TransformBig, 0.8f, false, 0, new[] { "igni_transform_big" }),
+        (Snd.TransformBig, 0.4f, false, 0, new[] { "igni_transform_big" }),
         (Snd.TransformSmall, 0.8f, false, 0, new[] { "igni_transform_small" }),
         (Snd.TransformNormal, 0.8f, false, 0, new[] { "igni_transform_normal" }),
         (Snd.Death, 1f, false, 0, new[] { "igni_death" }),
@@ -23,7 +23,7 @@ public static partial class OgonokBuilder
         (Snd.WindWarning, 0.8f, true, 0, new[] { "wind_warning" }),
         (Snd.WindGust, 1f, true, 0, new[] { "wind_gust" }),
         (Snd.CurtainFlap, 0.6f, true, 0, new[] { "curtain_flap" }),
-        (Snd.DropWater, 0.4f, true, 0.15f, new[] { "drop_fall_water" }), // лужа = тот же звук, тише
+        (Snd.DropWater, 0.4f, true, 0.15f, new[] { "drop_fall_water" }), // капля о пол и о лужу: один звук
         (Snd.DropHit, 0.9f, true, 0.15f, new[] { "drop_hit_igni" }),
         (Snd.SnowHit, 0.5f, true, 0.3f, new[] { "snow_hit_igni" }),
         (Snd.IceMelt, 0.9f, true, 0.15f, new[] { "ice_melt" }),
@@ -37,7 +37,7 @@ public static partial class OgonokBuilder
         (Snd.Raft, 0.7f, true, 0.8f, new[] { "raft_creak" }),
         (Snd.Methane, 0.9f, true, 0.1f, new[] { "methane_pop" }),
         (Snd.FanStop, 1f, true, 0, new[] { "fan_stop" }),
-        (Snd.FanLoop, 0.6f, true, 0, new[] { "fan_heavy_loop" }),
+        (Snd.FanLoop, 0.25f, true, 0, new[] { "fan_heavy_loop" }),
         (Snd.UpdraftLoop, 0.5f, true, 0, new[] { "updraft_loop" }),
         (Snd.CrackleLoop, 1f, false, 0, new[] { "igni_crackle_loop" }),
         (Snd.HissLoop, 0.6f, false, 0, new[] { "igni_hiss_low" }),
